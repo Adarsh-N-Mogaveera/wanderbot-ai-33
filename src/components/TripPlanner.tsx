@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,26 @@ const TripPlanner = () => {
   const [availableTime, setAvailableTime] = useState("");
   const [result, setResult] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [homeAddress, setHomeAddress] = useState("");
   const { toast } = useToast();
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('home_address')
+          .eq('user_id', session.user.id)
+          .single();
+        
+        if (profile?.home_address) {
+          setHomeAddress(profile.home_address);
+        }
+      }
+    };
+    loadProfile();
+  }, []);
 
   const generateItinerary = async () => {
     if (!startLocation || !availableTime) {
@@ -54,6 +73,7 @@ const TripPlanner = () => {
         body: {
           startLocation,
           availableTime: timeValue,
+          homeAddress: homeAddress || startLocation,
         },
       });
 
@@ -239,7 +259,7 @@ const TripPlanner = () => {
                 {result.estimatedReturnTime > 0 && (
                   <div className="p-3 bg-accent/5 rounded-lg border border-accent/20">
                     <p className="text-sm">
-                      <span className="font-medium">Return journey:</span> ~{Math.round(result.estimatedReturnTime)} minutes back to {result.startLocation}
+                      <span className="font-medium">Return journey:</span> ~{Math.round(result.estimatedReturnTime)} minutes back to {homeAddress || result.startLocation}
                     </p>
                   </div>
                 )}

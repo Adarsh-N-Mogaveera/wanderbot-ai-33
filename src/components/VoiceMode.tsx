@@ -1,54 +1,49 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Mic, MicOff, Volume2 } from "lucide-react";
+import { Mic, Volume2, Loader2, MicOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
 const VoiceMode = () => {
   const [isListening, setIsListening] = useState(false);
-  const [transcript, setTranscript] = useState("");
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [query, setQuery] = useState("");
   const [response, setResponse] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSupported, setIsSupported] = useState(true);
+  const recognitionRef = useRef<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
-    // Check if browser supports speech recognition
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      toast({
-        title: "Not Supported",
-        description: "Voice recognition is not supported in your browser.",
-        variant: "destructive",
-      });
-    }
-  }, [toast]);
-
-  const startListening = () => {
+    // Check for speech recognition support
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
+    
+    if (!SpeechRecognition) {
+      setIsSupported(false);
+      return;
+    }
 
+    const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = false;
     recognition.lang = 'en-US';
 
-    recognition.onstart = () => {
-      setIsListening(true);
-      setTranscript("");
-      setResponse("");
-    };
-
-    recognition.onresult = async (event: any) => {
-      const text = event.results[0][0].transcript;
-      setTranscript(text);
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setQuery(transcript);
       setIsListening(false);
-      await analyzeLandmark(text);
+      handleQuery(transcript);
     };
 
-    recognition.onerror = () => {
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
       setIsListening(false);
       toast({
-        title: "Error",
-        description: "Failed to recognize speech. Please try again.",
+        title: "Microphone Error",
+        description: event.error === 'not-allowed' 
+          ? "Please allow microphone access to use voice input"
+          : "Failed to recognize speech. Please try again.",
         variant: "destructive",
       });
     };
@@ -57,25 +52,36 @@ const VoiceMode = () => {
       setIsListening(false);
     };
 
-    recognition.start();
-  };
+    recognitionRef.current = recognition;
 
-  const analyzeLandmark = async (query: string) => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
+
+  const handleQuery = async (queryText: string) => {
+    if (!queryText.trim()) return;
+
     setIsLoading(true);
+    setResponse("");
+
     try {
       const { data, error } = await supabase.functions.invoke('analyze-landmark', {
-        body: { query },
+        body: { query: queryText },
       });
 
       if (error) throw error;
 
-      setResponse(data.information);
-      speakResponse(data.information);
+      const landmarkInfo = data.analysis;
+      setResponse(landmarkInfo);
+      speakResponse(landmarkInfo);
     } catch (error) {
       console.error('Error analyzing landmark:', error);
       toast({
         title: "Error",
-        description: "Failed to analyze landmark. Please try again.",
+        description: "Failed to analyze. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -83,59 +89,117 @@ const VoiceMode = () => {
     }
   };
 
+  const startListening = () => {
+    if (!isSupported) {
+      toast({
+        title: "Not Supported",
+        description: "Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (recognitionRef.current && !isListening) {
+      setQuery("");
+      setResponse("");
+      setIsListening(true);
+      recognitionRef.current.start();
+    }
+  };
+
+  const stopListening = () => {
+    if (recognitionRef.current && isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    }
+  };
+
   const speakResponse = (text: string) => {
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
-    window.speechSynthesis.speak(utterance);
+    if ('speechSynthesis' in window) {
+      setIsSpeaking(true);
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      utterance.onend = () => setIsSpeaking(false);
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  const stopSpeaking = () => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
   };
 
   return (
-    <Card className="p-8">
-      <div className="text-center space-y-6">
-        <h2 className="text-3xl font-bold">Voice Query Mode</h2>
-        <p className="text-muted-foreground">
-          Click the microphone and ask about any landmark
-        </p>
-
-        <div className="flex justify-center">
-          <Button
-            size="lg"
-            onClick={startListening}
-            disabled={isListening || isLoading}
-            className={`rounded-full w-24 h-24 ${isListening ? 'animate-pulse' : ''}`}
-          >
-            {isListening ? (
-              <Mic className="w-12 h-12" />
-            ) : (
-              <MicOff className="w-12 h-12" />
-            )}
-          </Button>
+    <Card className="p-6 md:p-8">
+      <div className="space-y-6">
+        <div className="text-center space-y-2">
+          <h2 className="text-2xl md:text-3xl font-bold">Voice Query</h2>
+          <p className="text-sm md:text-base text-muted-foreground">
+            Ask about any landmark or tourist attraction
+          </p>
         </div>
 
-        {transcript && (
-          <div className="mt-6 p-4 bg-primary/5 rounded-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <Mic className="w-5 h-5 text-primary" />
-              <h3 className="font-semibold">You asked:</h3>
+        <div className="flex flex-col items-center gap-6">
+          {!isSupported && (
+            <div className="p-4 bg-destructive/10 text-destructive rounded-lg text-sm text-center">
+              <MicOff className="w-5 h-5 mx-auto mb-2" />
+              Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari.
             </div>
-            <p className="text-left">{transcript}</p>
-          </div>
-        )}
+          )}
+          
+          <Button
+            size="lg"
+            onClick={isListening ? stopListening : startListening}
+            disabled={!isSupported || isLoading}
+            className="h-24 w-24 md:h-32 md:w-32 rounded-full shadow-elegant hover:shadow-glow transition-all"
+          >
+            {isListening ? (
+              <Mic className="w-10 h-10 md:w-12 md:h-12 animate-pulse text-red-500" />
+            ) : isLoading ? (
+              <Loader2 className="w-10 h-10 md:w-12 md:h-12 animate-spin" />
+            ) : (
+              <Mic className="w-10 h-10 md:w-12 md:h-12" />
+            )}
+          </Button>
 
-        {isLoading && (
-          <div className="mt-6 p-4 bg-muted rounded-lg">
-            <p className="animate-pulse">Analyzing...</p>
+          <p className="text-sm text-muted-foreground text-center">
+            {isListening ? "Listening..." : isLoading ? "Analyzing..." : "Tap to speak"}
+          </p>
+        </div>
+
+        {query && (
+          <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 animate-fade-in">
+            <div className="flex items-center gap-2 mb-2">
+              <Mic className="w-4 h-4 text-primary" />
+              <h3 className="font-semibold text-sm">You asked:</h3>
+            </div>
+            <p className="text-sm">{query}</p>
           </div>
         )}
 
         {response && (
-          <div className="mt-6 p-4 bg-accent/5 rounded-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <Volume2 className="w-5 h-5 text-accent" />
-              <h3 className="font-semibold">Information:</h3>
+          <div className="p-4 bg-accent/5 rounded-lg border border-accent/20 animate-fade-in">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Volume2 className="w-4 h-4 text-accent" />
+                <h3 className="font-semibold text-sm">Response:</h3>
+              </div>
+              {isSpeaking && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={stopSpeaking}
+                  className="gap-1"
+                >
+                  <Volume2 className="w-3 h-3" />
+                  Stop
+                </Button>
+              )}
             </div>
-            <p className="text-left">{response}</p>
+            <p className="text-sm leading-relaxed">{response}</p>
           </div>
         )}
       </div>

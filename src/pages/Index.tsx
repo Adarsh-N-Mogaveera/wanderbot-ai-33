@@ -1,90 +1,131 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Mic, Camera, MapPin, Sparkles, LogOut, User, Loader2 } from "lucide-react";
 import VoiceMode from "@/components/VoiceMode";
 import ImageMode from "@/components/ImageMode";
 import TripPlanner from "@/components/TripPlanner";
-import { Mic, Camera, MapPin } from "lucide-react";
-
-type Mode = "voice" | "image" | "trip" | null;
 
 const Index = () => {
-  const [activeMode, setActiveMode] = useState<Mode>(null);
+  const [activeTab, setActiveTab] = useState("voice");
+  const [isLoading, setIsLoading] = useState(true);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        navigate('/auth');
+        return;
+      }
+
+      setUserEmail(session.user.email || null);
+      setIsLoading(false);
+    };
+
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        navigate('/auth');
+      }
+      if (session) {
+        setUserEmail(session.user.email || null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+  };
+
+  const handlePreferences = () => {
+    navigate('/preferences');
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-secondary/10">
-      <div className="container mx-auto px-4 py-8">
-        <header className="text-center mb-12">
-          <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
-            WanderBot AI
-          </h1>
-          <p className="text-xl text-muted-foreground">
-            Your Intelligent Travel Companion
+      <div className="container mx-auto px-4 py-6 md:py-8">
+        {/* Header */}
+        <div className="text-center mb-6 md:mb-8 space-y-2 animate-fade-in">
+          <div className="flex items-center justify-center gap-2 mb-3">
+            <Sparkles className="w-8 h-8 md:w-10 md:h-10 text-primary animate-pulse" />
+            <h1 className="text-3xl md:text-5xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+              WanderBot AI
+            </h1>
+          </div>
+          <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto px-4">
+            Your intelligent travel companion powered by AI
           </p>
-        </header>
-
-        {!activeMode ? (
-          <div className="max-w-4xl mx-auto grid gap-6 md:grid-cols-3">
-            <Card 
-              className="p-6 cursor-pointer hover:shadow-lg transition-all duration-300 hover:-translate-y-1 border-2 hover:border-primary"
-              onClick={() => setActiveMode("voice")}
-            >
-              <div className="flex flex-col items-center text-center space-y-4">
-                <div className="p-4 rounded-full bg-primary/10">
-                  <Mic className="w-8 h-8 text-primary" />
-                </div>
-                <h2 className="text-2xl font-semibold">Voice Query</h2>
-                <p className="text-muted-foreground">
-                  Ask about landmarks using your voice
-                </p>
-              </div>
-            </Card>
-
-            <Card 
-              className="p-6 cursor-pointer hover:shadow-lg transition-all duration-300 hover:-translate-y-1 border-2 hover:border-secondary"
-              onClick={() => setActiveMode("image")}
-            >
-              <div className="flex flex-col items-center text-center space-y-4">
-                <div className="p-4 rounded-full bg-secondary/10">
-                  <Camera className="w-8 h-8 text-secondary" />
-                </div>
-                <h2 className="text-2xl font-semibold">Image Recognition</h2>
-                <p className="text-muted-foreground">
-                  Upload photos to identify landmarks
-                </p>
-              </div>
-            </Card>
-
-            <Card 
-              className="p-6 cursor-pointer hover:shadow-lg transition-all duration-300 hover:-translate-y-1 border-2 hover:border-accent"
-              onClick={() => setActiveMode("trip")}
-            >
-              <div className="flex flex-col items-center text-center space-y-4">
-                <div className="p-4 rounded-full bg-accent/10">
-                  <MapPin className="w-8 h-8 text-accent" />
-                </div>
-                <h2 className="text-2xl font-semibold">Trip Planner</h2>
-                <p className="text-muted-foreground">
-                  Optimize your itinerary with AI
-                </p>
-              </div>
-            </Card>
-          </div>
-        ) : (
-          <div className="max-w-4xl mx-auto">
+          
+          {/* User Menu */}
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <span className="text-sm text-muted-foreground">{userEmail}</span>
             <Button
-              variant="outline"
-              onClick={() => setActiveMode(null)}
-              className="mb-6"
+              variant="ghost"
+              size="sm"
+              onClick={handlePreferences}
+              className="gap-2"
             >
-              ← Back to Menu
+              <User className="w-4 h-4" />
+              Preferences
             </Button>
-
-            {activeMode === "voice" && <VoiceMode />}
-            {activeMode === "image" && <ImageMode />}
-            {activeMode === "trip" && <TripPlanner />}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSignOut}
+              className="gap-2"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </Button>
           </div>
-        )}
+        </div>
+
+        {/* Mode Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="max-w-4xl mx-auto">
+          <TabsList className="grid w-full grid-cols-3 mb-8">
+            <TabsTrigger value="voice" className="gap-2">
+              <Mic className="w-4 h-4" />
+              <span className="hidden md:inline">Voice</span>
+            </TabsTrigger>
+            <TabsTrigger value="image" className="gap-2">
+              <Camera className="w-4 h-4" />
+              <span className="hidden md:inline">Image</span>
+            </TabsTrigger>
+            <TabsTrigger value="trip" className="gap-2">
+              <MapPin className="w-4 h-4" />
+              <span className="hidden md:inline">Trip</span>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="voice">
+            <VoiceMode />
+          </TabsContent>
+
+          <TabsContent value="image">
+            <ImageMode />
+          </TabsContent>
+
+          <TabsContent value="trip">
+            <TripPlanner />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
