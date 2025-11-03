@@ -14,29 +14,131 @@ export type Database = {
   }
   public: {
     Tables: {
+      destination_ratings: {
+        Row: {
+          created_at: string | null
+          destination_name: string
+          id: string
+          rating: number | null
+          review: string | null
+          user_id: string
+          visited_date: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          destination_name: string
+          id?: string
+          rating?: number | null
+          review?: string | null
+          user_id: string
+          visited_date?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          destination_name?: string
+          id?: string
+          rating?: number | null
+          review?: string | null
+          user_id?: string
+          visited_date?: string | null
+        }
+        Relationships: []
+      }
+      favorite_destinations: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          destination_name: string
+          id: string
+          location: string | null
+          notes: string | null
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          destination_name: string
+          id?: string
+          location?: string | null
+          notes?: string | null
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          destination_name?: string
+          id?: string
+          location?: string | null
+          notes?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
+          accessibility_needs: string[] | null
           created_at: string
           home_address: string | null
           id: string
+          notification_preferences: Json | null
+          preferred_language: string | null
           travel_preferences: Json | null
           updated_at: string
           user_id: string
         }
         Insert: {
+          accessibility_needs?: string[] | null
           created_at?: string
           home_address?: string | null
           id?: string
+          notification_preferences?: Json | null
+          preferred_language?: string | null
           travel_preferences?: Json | null
           updated_at?: string
           user_id: string
         }
         Update: {
+          accessibility_needs?: string[] | null
           created_at?: string
           home_address?: string | null
           id?: string
+          notification_preferences?: Json | null
+          preferred_language?: string | null
           travel_preferences?: Json | null
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      trip_history: {
+        Row: {
+          created_at: string | null
+          id: string
+          itinerary: Json
+          notes: string | null
+          rating: number | null
+          trip_date: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          itinerary: Json
+          notes?: string | null
+          rating?: number | null
+          trip_date?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          itinerary?: Json
+          notes?: string | null
+          rating?: number | null
+          trip_date?: string | null
+          updated_at?: string | null
           user_id?: string
         }
         Relationships: []

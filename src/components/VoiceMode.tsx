@@ -12,11 +12,12 @@ const VoiceMode = () => {
   const [response, setResponse] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
+  const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
+  const [retryCount, setRetryCount] = useState(0);
   const recognitionRef = useRef<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
-    // Check for speech recognition support
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     
     if (!SpeechRecognition) {
@@ -24,28 +25,66 @@ const VoiceMode = () => {
       return;
     }
 
+    // Check microphone permission
+    if (navigator.permissions) {
+      navigator.permissions.query({ name: 'microphone' as PermissionName }).then((result) => {
+        setMicPermission(result.state as any);
+        result.onchange = () => {
+          setMicPermission(result.state as any);
+        };
+      }).catch(() => {
+        // Permission API not supported, assume prompt
+        setMicPermission('prompt');
+      });
+    }
+
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = false;
     recognition.lang = 'en-US';
+    recognition.maxAlternatives = 1;
 
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
+      const confidence = event.results[0][0].confidence;
+      
+      console.log('Voice recognition result:', transcript, 'Confidence:', confidence);
+      
       setQuery(transcript);
-      setIsListening(false);
       handleQuery(transcript);
+      setIsListening(false);
+      setRetryCount(0);
     };
 
     recognition.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
       setIsListening(false);
-      toast({
-        title: "Microphone Error",
-        description: event.error === 'not-allowed' 
-          ? "Please allow microphone access to use voice input"
-          : "Failed to recognize speech. Please try again.",
-        variant: "destructive",
-      });
+      
+      if (event.error === 'not-allowed') {
+        setMicPermission('denied');
+        toast({
+          title: "Microphone access denied",
+          description: "Please allow microphone access in your browser settings.",
+          variant: "destructive",
+        });
+      } else if (event.error === 'no-speech') {
+        toast({
+          title: "No speech detected",
+          description: "Please speak clearly and try again.",
+        });
+      } else if (event.error === 'network') {
+        toast({
+          title: "Network error",
+          description: "Please check your internet connection and try again.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Voice recognition error",
+          description: "Please try again or use text input instead.",
+          variant: "destructive",
+        });
+      }
     };
 
     recognition.onend = () => {
@@ -99,11 +138,37 @@ const VoiceMode = () => {
       return;
     }
 
+    if (micPermission === 'denied') {
+      toast({
+        title: "Microphone access required",
+        description: "Please enable microphone access in your browser settings.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (recognitionRef.current && !isListening) {
       setQuery("");
       setResponse("");
       setIsListening(true);
-      recognitionRef.current.start();
+      
+      try {
+        recognitionRef.current.start();
+      } catch (error) {
+        console.error('Failed to start recognition:', error);
+        setIsListening(false);
+        
+        if (retryCount < 3) {
+          setRetryCount(prev => prev + 1);
+          setTimeout(() => startListening(), 1000);
+        } else {
+          toast({
+            title: "Voice recognition unavailable",
+            description: "Please use text input instead.",
+            variant: "destructive",
+          });
+        }
+      }
     }
   };
 
@@ -139,6 +204,11 @@ const VoiceMode = () => {
           <h2 className="text-2xl md:text-3xl font-bold">Voice Query</h2>
           <p className="text-sm md:text-base text-muted-foreground">
             Ask about any landmark or tourist attraction
+            {micPermission === 'denied' && (
+              <span className="block mt-2 text-destructive text-sm">
+                ⚠️ Microphone access denied. Please enable it in browser settings.
+              </span>
+            )}
           </p>
         </div>
 

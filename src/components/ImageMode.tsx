@@ -1,7 +1,7 @@
 import { useState, ChangeEvent, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Upload, Loader2, Image as ImageIcon, Camera } from "lucide-react";
+import { Upload, Loader2, Image as ImageIcon, Camera, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -9,6 +9,7 @@ const ImageMode = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [result, setResult] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [confidence, setConfidence] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -55,6 +56,16 @@ const ImageMode = () => {
       if (error) throw error;
 
       setResult(data.analysis);
+      
+      // Extract confidence if present in response
+      if (data.confidence) {
+        setConfidence(data.confidence);
+      }
+      
+      toast({
+        title: "Analysis complete",
+        description: "Image analyzed successfully",
+      });
     } catch (error) {
       console.error('Error analyzing image:', error);
       toast({
@@ -153,12 +164,18 @@ const ImageMode = () => {
         </div>
 
         {result && (
-          <div className="p-4 bg-accent/5 rounded-lg border border-accent/20 animate-fade-in">
+          <div className="p-4 bg-accent/5 rounded-lg border border-accent/20 animate-fade-in space-y-2">
             <div className="flex items-center gap-2 mb-2">
               <ImageIcon className="w-4 h-4 text-accent" />
               <h3 className="font-semibold text-sm">Landmark Information:</h3>
             </div>
             <p className="text-sm leading-relaxed">{result}</p>
+            {confidence && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2 border-t border-accent/20">
+                <TrendingUp className="w-4 h-4" />
+                <span>Confidence: {(confidence * 100).toFixed(0)}%</span>
+              </div>
+            )}
           </div>
         )}
       </div>

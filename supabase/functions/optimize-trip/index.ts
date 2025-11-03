@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { startLocation, availableTime, homeAddress } = await req.json();
+    const { startLocation, availableTime, homeAddress, userPreferences } = await req.json();
 
     if (!startLocation || !availableTime) {
       return new Response(
@@ -20,34 +20,41 @@ serve(async (req) => {
       );
     }
 
-    const systemPrompt = `You are a travel optimization AI. Given a start location, home address, and available time in hours, suggest tourist destinations that can be visited.
+    const systemPrompt = `You are an advanced travel optimization AI. Given a start location, home address, available time, and user preferences, suggest tourist destinations using multi-criteria analysis.
 
 For each destination, provide:
 - name: The name of the destination
 - description: Brief description (1-2 sentences)
 - visitTime: Estimated time to visit in minutes
-- rating: Rating out of 5
+- rating: Rating out of 5 (float)
 - distanceFromSource: Distance from the starting location in km
 - travelTimeFromSource: Travel time from starting location in minutes
 - distanceToSource: Distance to the home address in km (for return journey calculation)
-- category: One of: cultural, nature, adventure, food, shopping
+- category: One of: cultural, nature, adventure, food, shopping, entertainment, historical
+- popularity: Popularity score from 1-10
+- openingHours: Typical opening hours (e.g., "9:00-18:00")
+- bestTimeToVisit: Best time of day (morning/afternoon/evening)
+- crowdLevel: Expected crowd level (low/medium/high)
 
-IMPORTANT: The distanceToSource field should represent the distance from the destination to the HOME ADDRESS, not the starting location, as users need to return home after their trip.
+CRITICAL: The distanceToSource field MUST represent the distance from the destination to the HOME ADDRESS, not the starting location.
 
-Return between 5-10 destinations sorted by a combination of:
-1. High ratings (prefer 4+ stars)
-2. Reasonable distance (prefer closer locations)
-3. Good travel time efficiency
+Return 8-12 diverse destinations that match the user's preferences. Consider:
+1. High ratings (4+ stars preferred)
+2. Reasonable distance and travel time
+3. User's travel preferences (cultural, nature, adventure, food, shopping)
 4. Variety of categories
-5. Efficient return route to home address
+5. Time efficiency for return journey to home
+6. Popularity and crowd levels
+7. Operating hours compatibility
 
 Respond with a JSON array of destinations.`;
 
     const userPrompt = `Start location: ${startLocation}
 Home address: ${homeAddress || startLocation}
 Available time: ${availableTime} hours
+User preferences: ${userPreferences && userPreferences.length > 0 ? userPreferences.join(', ') : 'all categories'}
 
-Please suggest destinations I can visit with the time available. Consider travel time to each destination from the start location and the return journey back to my HOME ADDRESS (${homeAddress || startLocation}), not the starting location.`;
+Please suggest destinations matching my preferences. Calculate travel time from start location to each destination AND the return journey time from the last destination back to my HOME ADDRESS (${homeAddress || startLocation}).`;
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -101,25 +108,71 @@ Please suggest destinations I can visit with the time available. Consider travel
       throw new Error('Failed to parse AI response');
     }
 
-    // Implement greedy algorithm for trip optimization
+    // Multi-criteria scoring algorithm
     const availableMinutes = availableTime * 60;
-    const optimizedRoute: any[] = [];
-    let remainingTime = availableMinutes;
-    let skippedDestinations: any[] = [];
-
-    // Sort destinations by rating (descending) and distance (ascending)
-    const sortedDestinations = [...destinations].sort((a, b) => {
-      const ratingDiff = b.rating - a.rating;
-      if (Math.abs(ratingDiff) > 0.3) return ratingDiff;
-      return a.distanceFromSource - b.distanceFromSource;
+    
+    // Calculate scores for each destination
+    const scoredDestinations = destinations.map((dest: any) => {
+      // Normalize scores to 0-1 range
+      const ratingScore = dest.rating / 5.0; // 0-1
+      const maxDistance = Math.max(...destinations.map((d: any) => d.distanceFromSource));
+      const distanceScore = maxDistance > 0 ? 1 - (dest.distanceFromSource / maxDistance) : 1; // 0-1, closer is better
+      
+      const maxTime = Math.max(...destinations.map((d: any) => d.visitTime + d.travelTimeFromSource));
+      const timeScore = maxTime > 0 ? 1 - ((dest.visitTime + dest.travelTimeFromSource) / maxTime) : 1; // 0-1, faster is better
+      
+      const popularityScore = (dest.popularity || 5) / 10.0; // 0-1
+      
+      // Check preference match
+      let preferenceScore = 0.5; // Default
+      if (userPreferences && userPreferences.length > 0) {
+        const categoryMatch = userPreferences.some((pref: string) => 
+          dest.category.toLowerCase().includes(pref.toLowerCase()) ||
+          pref.toLowerCase().includes(dest.category.toLowerCase())
+        );
+        preferenceScore = categoryMatch ? 1.0 : 0.3;
+      }
+      
+      // Weighted scoring: Rating(30%) + Distance(25%) + Time(20%) + Preference(15%) + Popularity(10%)
+      const totalScore = (
+        ratingScore * 0.30 +
+        distanceScore * 0.25 +
+        timeScore * 0.20 +
+        preferenceScore * 0.15 +
+        popularityScore * 0.10
+      );
+      
+      return { ...dest, score: totalScore };
     });
 
+    // Sort by score descending
+    const sortedDestinations = scoredDestinations.sort((a: any, b: any) => b.score - a.score);
+    
+    const optimizedRoute: any[] = [];
+    let remainingTime = availableMinutes;
+    const skippedDestinations: any[] = [];
+
+    // Intelligent selection with time budget
     for (const destination of sortedDestinations) {
       const timeRequired = destination.visitTime + destination.travelTimeFromSource;
       
-      if (remainingTime >= timeRequired) {
+      // Calculate return time for the complete trip
+      let totalTripTime = timeRequired;
+      if (optimizedRoute.length > 0) {
+        // Add accumulated time from previous destinations
+        totalTripTime = optimizedRoute.reduce((sum, d) => sum + d.visitTime + d.travelTimeFromSource, 0) + timeRequired;
+      }
+      
+      // Add return time from this destination to home
+      const returnTime = destination.distanceToSource 
+        ? (destination.distanceToSource / 40) * 60 // Assume 40 km/h average speed
+        : destination.travelTimeFromSource;
+      
+      const completeTripTime = totalTripTime + returnTime;
+      
+      if (completeTripTime <= availableMinutes) {
         optimizedRoute.push(destination);
-        remainingTime -= timeRequired;
+        remainingTime = availableMinutes - completeTripTime;
       } else {
         skippedDestinations.push(destination);
       }
@@ -137,6 +190,9 @@ Please suggest destinations I can visit with the time available. Consider travel
     const summary = {
       totalLocations: optimizedRoute.length,
       averageRating: optimizedRoute.reduce((sum, d) => sum + d.rating, 0) / (optimizedRoute.length || 1),
+      totalDistance: optimizedRoute.reduce((sum, d) => sum + d.distanceFromSource, 0),
+      totalVisitTime: optimizedRoute.reduce((sum, d) => sum + d.visitTime, 0),
+      averageScore: optimizedRoute.reduce((sum, d) => sum + (d.score || 0), 0) / (optimizedRoute.length || 1),
     };
 
     return new Response(

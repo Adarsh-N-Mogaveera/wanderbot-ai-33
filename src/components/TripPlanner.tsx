@@ -17,6 +17,11 @@ interface Destination {
   travelTimeFromSource: number;
   distanceToSource: number;
   category: string;
+  score?: number;
+  popularity?: number;
+  openingHours?: string;
+  bestTimeToVisit?: string;
+  crowdLevel?: string;
 }
 
 const TripPlanner = () => {
@@ -25,6 +30,7 @@ const TripPlanner = () => {
   const [result, setResult] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [homeAddress, setHomeAddress] = useState("");
+  const [userPreferences, setUserPreferences] = useState<string[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -33,12 +39,15 @@ const TripPlanner = () => {
       if (session) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('home_address')
+          .select('home_address, travel_preferences')
           .eq('user_id', session.user.id)
           .single();
         
         if (profile?.home_address) {
           setHomeAddress(profile.home_address);
+        }
+        if (profile?.travel_preferences) {
+          setUserPreferences(profile.travel_preferences as string[]);
         }
       }
     };
@@ -74,6 +83,7 @@ const TripPlanner = () => {
           startLocation,
           availableTime: timeValue,
           homeAddress: homeAddress || startLocation,
+          userPreferences,
         },
       });
 
@@ -103,8 +113,10 @@ const TripPlanner = () => {
       adventure: "bg-orange-500/10 text-orange-600 border-orange-500/20",
       food: "bg-red-500/10 text-red-600 border-red-500/20",
       shopping: "bg-purple-500/10 text-purple-600 border-purple-500/20",
+      entertainment: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+      historical: "bg-amber-500/10 text-amber-600 border-amber-500/20",
     };
-    return colors[category] || "bg-accent/10 text-accent border-accent/20";
+    return colors[category.toLowerCase()] || "bg-accent/10 text-accent border-accent/20";
   };
 
   return (
@@ -197,7 +209,7 @@ const TripPlanner = () => {
                     <p className="text-muted-foreground">Average Rating</p>
                     <p className="font-medium flex items-center gap-1">
                       <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                      {result.summary.averageRating.toFixed(1)}
+                      {result.summary.averageRating.toFixed(1)}/5
                     </p>
                   </div>
                   <div className="space-y-1">
@@ -250,6 +262,12 @@ const TripPlanner = () => {
                         <Badge variant="outline" className="text-xs">
                           {destination.travelTimeFromSource} min travel
                         </Badge>
+                        {destination.score && (
+                          <Badge variant="outline" className="text-xs bg-primary/5 border-primary/20">
+                            <Star className="w-3 h-3 mr-1" />
+                            Score: {(destination.score * 100).toFixed(0)}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   </Card>
