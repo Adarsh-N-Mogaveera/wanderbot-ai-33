@@ -64,32 +64,25 @@ const VoiceMode = () => {
         setMicPermission('denied');
         toast({
           title: "Microphone access denied",
-          description: "Please allow microphone access in your browser settings.",
+          description: "Please enable microphone access or use text search.",
           variant: "destructive",
         });
       } else if (event.error === 'no-speech') {
-        // Silent error - don't show toast, just restart listening
-        if (retryCount < 2) {
-          setRetryCount(prev => prev + 1);
-          setTimeout(() => startListening(), 500);
-        }
+        // User didn't speak - don't show error, just stop
+        return;
       } else if (event.error === 'network') {
-        // Network errors are often transient, retry automatically
-        if (retryCount < 2) {
-          setRetryCount(prev => prev + 1);
-          setTimeout(() => startListening(), 1000);
-        } else {
-          toast({
-            title: "Connection issue",
-            description: "Having trouble connecting. Please try the text search instead.",
-          });
-        }
+        // Network errors mean Google's servers are unreachable - don't retry
+        toast({
+          title: "Voice input unavailable",
+          description: "Browser can't connect to speech service. Please use text search instead.",
+          variant: "destructive",
+        });
       } else if (event.error === 'aborted') {
         // User stopped listening, no error needed
         return;
       } else {
         toast({
-          title: "Voice recognition unavailable",
+          title: "Voice recognition error",
           description: "Please use the text search mode instead.",
         });
       }
@@ -140,7 +133,7 @@ const VoiceMode = () => {
     if (!isSupported) {
       toast({
         title: "Not Supported",
-        description: "Speech recognition is not supported in your browser. Please use the text search mode.",
+        description: "Speech recognition is not supported in your browser. Please use the Search tab.",
         variant: "destructive",
       });
       return;
@@ -149,7 +142,7 @@ const VoiceMode = () => {
     if (micPermission === 'denied') {
       toast({
         title: "Microphone access required",
-        description: "Please enable microphone access or use the text search mode.",
+        description: "Please enable microphone access or use the Search tab.",
         variant: "destructive",
       });
       return;
@@ -159,7 +152,6 @@ const VoiceMode = () => {
       setQuery("");
       setResponse("");
       setIsListening(true);
-      setRetryCount(0);
       
       try {
         recognitionRef.current.start();
@@ -168,7 +160,7 @@ const VoiceMode = () => {
         setIsListening(false);
         toast({
           title: "Voice recognition busy",
-          description: "Please try again or use the text search mode.",
+          description: "Please try again or use the Search tab.",
         });
       }
     }
@@ -206,12 +198,17 @@ const VoiceMode = () => {
           <h2 className="text-2xl md:text-3xl font-bold">Voice Query</h2>
           <p className="text-sm md:text-base text-muted-foreground">
             Ask about any landmark or tourist attraction
-            {micPermission === 'denied' && (
-              <span className="block mt-2 text-destructive text-sm">
-                ⚠️ Microphone access denied. Please enable it in browser settings.
-              </span>
-            )}
           </p>
+          {micPermission === 'denied' && (
+            <div className="p-3 bg-destructive/10 text-destructive rounded-lg text-sm">
+              ⚠️ Microphone access denied. Please enable it in browser settings or use the Search tab.
+            </div>
+          )}
+          {!isSupported && (
+            <div className="p-3 bg-amber-500/10 text-amber-700 rounded-lg text-sm">
+              💡 Voice input is not reliable in all browsers. We recommend using the Search tab for best results.
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col items-center gap-6">

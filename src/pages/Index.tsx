@@ -73,6 +73,9 @@ const Index = () => {
           <p className="text-base md:text-lg text-muted-foreground max-w-2xl mx-auto px-4">
             Your intelligent travel companion powered by AI
           </p>
+          <p className="text-sm text-muted-foreground">
+            💡 Use the <strong>Search</strong> tab for the most reliable experience
+          </p>
           
           {/* User Menu */}
           <div className="flex items-center justify-center gap-2 pt-2">
