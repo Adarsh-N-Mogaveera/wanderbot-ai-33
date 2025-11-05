@@ -4,13 +4,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Mic, Camera, MapPin, Sparkles, LogOut, User, Loader2 } from "lucide-react";
+import { Mic, Camera, MapPin, Sparkles, LogOut, User, Loader2, Search } from "lucide-react";
 import VoiceMode from "@/components/VoiceMode";
 import ImageMode from "@/components/ImageMode";
+import TextMode from "@/components/TextMode";
 import TripPlanner from "@/components/TripPlanner";
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState("voice");
+  const [activeTab, setActiveTab] = useState("search");
   const [isLoading, setIsLoading] = useState(true);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -99,7 +100,11 @@ const Index = () => {
 
         {/* Mode Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="max-w-4xl mx-auto">
-          <TabsList className="grid w-full grid-cols-3 mb-8">
+          <TabsList className="grid w-full grid-cols-4 mb-8">
+            <TabsTrigger value="search" className="gap-2">
+              <Search className="w-4 h-4" />
+              <span className="hidden md:inline">Search</span>
+            </TabsTrigger>
             <TabsTrigger value="voice" className="gap-2">
               <Mic className="w-4 h-4" />
               <span className="hidden md:inline">Voice</span>
@@ -113,6 +118,10 @@ const Index = () => {
               <span className="hidden md:inline">Trip</span>
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="search">
+            <TextMode />
+          </TabsContent>
 
           <TabsContent value="voice">
             <VoiceMode />
