@@ -96,9 +96,10 @@ const TripPlanner = () => {
       });
     } catch (error) {
       console.error('Error generating itinerary:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to generate itinerary.";
       toast({
         title: "Error",
-        description: "Failed to generate itinerary. Please try again.",
+        description: errorMessage + " Please try again.",
         variant: "destructive",
       });
     } finally {

@@ -68,21 +68,29 @@ const VoiceMode = () => {
           variant: "destructive",
         });
       } else if (event.error === 'no-speech') {
-        toast({
-          title: "No speech detected",
-          description: "Please speak clearly and try again.",
-        });
+        // Silent error - don't show toast, just restart listening
+        if (retryCount < 2) {
+          setRetryCount(prev => prev + 1);
+          setTimeout(() => startListening(), 500);
+        }
       } else if (event.error === 'network') {
-        toast({
-          title: "Network error",
-          description: "Please check your internet connection and try again.",
-          variant: "destructive",
-        });
+        // Network errors are often transient, retry automatically
+        if (retryCount < 2) {
+          setRetryCount(prev => prev + 1);
+          setTimeout(() => startListening(), 1000);
+        } else {
+          toast({
+            title: "Connection issue",
+            description: "Having trouble connecting. Please try the text search instead.",
+          });
+        }
+      } else if (event.error === 'aborted') {
+        // User stopped listening, no error needed
+        return;
       } else {
         toast({
-          title: "Voice recognition error",
-          description: "Please try again or use text input instead.",
-          variant: "destructive",
+          title: "Voice recognition unavailable",
+          description: "Please use the text search mode instead.",
         });
       }
     };
@@ -132,7 +140,7 @@ const VoiceMode = () => {
     if (!isSupported) {
       toast({
         title: "Not Supported",
-        description: "Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari.",
+        description: "Speech recognition is not supported in your browser. Please use the text search mode.",
         variant: "destructive",
       });
       return;
@@ -141,7 +149,7 @@ const VoiceMode = () => {
     if (micPermission === 'denied') {
       toast({
         title: "Microphone access required",
-        description: "Please enable microphone access in your browser settings.",
+        description: "Please enable microphone access or use the text search mode.",
         variant: "destructive",
       });
       return;
@@ -151,23 +159,17 @@ const VoiceMode = () => {
       setQuery("");
       setResponse("");
       setIsListening(true);
+      setRetryCount(0);
       
       try {
         recognitionRef.current.start();
       } catch (error) {
         console.error('Failed to start recognition:', error);
         setIsListening(false);
-        
-        if (retryCount < 3) {
-          setRetryCount(prev => prev + 1);
-          setTimeout(() => startListening(), 1000);
-        } else {
-          toast({
-            title: "Voice recognition unavailable",
-            description: "Please use text input instead.",
-            variant: "destructive",
-          });
-        }
+        toast({
+          title: "Voice recognition busy",
+          description: "Please try again or use the text search mode.",
+        });
       }
     }
   };

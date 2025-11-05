@@ -1,7 +1,7 @@
 import { useState, ChangeEvent, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Upload, Loader2, Image as ImageIcon, Camera, TrendingUp } from "lucide-react";
+import { Upload, Loader2, Image as ImageIcon, Camera, TrendingUp, Volume2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -13,6 +13,25 @@ const ImageMode = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  const speakResponse = (text: string) => {
+    if ('speechSynthesis' in window) {
+      setIsSpeaking(true);
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      utterance.onend = () => setIsSpeaking(false);
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  const stopSpeaking = () => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
+  };
 
   const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -37,6 +56,14 @@ const ImageMode = () => {
   };
 
   const handleCameraCapture = () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast({
+        title: "Camera not available",
+        description: "Your device doesn't support camera capture. Please upload an image instead.",
+        variant: "destructive",
+      });
+      return;
+    }
     cameraInputRef.current?.click();
   };
 
@@ -55,12 +82,16 @@ const ImageMode = () => {
 
       if (error) throw error;
 
-      setResult(data.analysis);
+      const landmarkInfo = data.analysis;
+      setResult(landmarkInfo);
       
       // Extract confidence if present in response
       if (data.confidence) {
         setConfidence(data.confidence);
       }
+      
+      // Speak the result
+      speakResponse(landmarkInfo);
       
       toast({
         title: "Analysis complete",
@@ -165,9 +196,22 @@ const ImageMode = () => {
 
         {result && (
           <div className="p-4 bg-accent/5 rounded-lg border border-accent/20 animate-fade-in space-y-2">
-            <div className="flex items-center gap-2 mb-2">
-              <ImageIcon className="w-4 h-4 text-accent" />
-              <h3 className="font-semibold text-sm">Landmark Information:</h3>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-accent" />
+                <h3 className="font-semibold text-sm">Landmark Information:</h3>
+              </div>
+              {isSpeaking && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={stopSpeaking}
+                  className="gap-1"
+                >
+                  <Volume2 className="w-3 h-3" />
+                  Stop
+                </Button>
+              )}
             </div>
             <p className="text-sm leading-relaxed">{result}</p>
             {confidence && (
