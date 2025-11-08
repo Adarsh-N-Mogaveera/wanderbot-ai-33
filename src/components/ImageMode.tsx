@@ -33,7 +33,7 @@ const ImageMode = () => {
     }
   };
 
-  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>, fromCamera: boolean = false) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 20 * 1024 * 1024) {
@@ -49,7 +49,8 @@ const ImageMode = () => {
       reader.onloadend = () => {
         const base64String = reader.result as string;
         setSelectedImage(base64String);
-        analyzeImage(base64String);
+        // Use location verification for camera captures
+        analyzeImage(base64String, fromCamera);
       };
       reader.readAsDataURL(file);
     }
@@ -71,13 +72,44 @@ const ImageMode = () => {
     fileInputRef.current?.click();
   };
 
-  const analyzeImage = async (imageData: string) => {
+  const analyzeImage = async (imageData: string, useLocation: boolean = false) => {
     setIsLoading(true);
     setResult("");
 
     try {
+      let location = null;
+      
+      // Get GPS location if requested (from Capture)
+      if (useLocation && 'geolocation' in navigator) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 5000,
+            });
+          });
+          
+          location = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          };
+          
+          toast({
+            title: "Location obtained",
+            description: "Using your location to verify landmark",
+          });
+        } catch (geoError) {
+          console.log('Location not available:', geoError);
+          // Continue without location
+        }
+      }
+
       const { data, error } = await supabase.functions.invoke('analyze-landmark', {
-        body: { imageData },
+        body: { 
+          imageData,
+          location,
+          includeWikipedia: true,
+        },
       });
 
       if (error) throw error;
@@ -95,7 +127,7 @@ const ImageMode = () => {
       
       toast({
         title: "Analysis complete",
-        description: "Image analyzed successfully",
+        description: "Landmark identified successfully",
       });
     } catch (error) {
       console.error('Error analyzing image:', error);
@@ -113,9 +145,9 @@ const ImageMode = () => {
     <Card className="p-6 md:p-8">
       <div className="space-y-6">
         <div className="text-center space-y-2">
-          <h2 className="text-2xl md:text-3xl font-bold">Image Recognition</h2>
+          <h2 className="text-2xl md:text-3xl font-bold">Landmark Recognition</h2>
           <p className="text-sm md:text-base text-muted-foreground">
-            Capture or upload a photo of a landmark
+            <strong>Capture:</strong> Use camera with GPS verification • <strong>Upload:</strong> Select from gallery
           </p>
         </div>
 
@@ -125,7 +157,7 @@ const ImageMode = () => {
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              onChange={handleImageUpload}
+              onChange={(e) => handleImageUpload(e, false)}
               className="hidden"
               disabled={isLoading}
             />
@@ -134,7 +166,7 @@ const ImageMode = () => {
               type="file"
               accept="image/*"
               capture="environment"
-              onChange={handleImageUpload}
+              onChange={(e) => handleImageUpload(e, true)}
               className="hidden"
               disabled={isLoading}
             />

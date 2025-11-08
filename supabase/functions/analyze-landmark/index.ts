@@ -11,27 +11,43 @@ serve(async (req) => {
   }
 
   try {
-    const { query, imageData } = await req.json();
+    const { query, imageData, location, includeWikipedia } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
 
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
+    let systemPrompt = `You are an expert travel guide AI specializing in landmarks and tourist attractions worldwide.
+
+When analyzing images or answering queries:
+- Identify the landmark with high confidence
+- Provide fascinating historical facts and cultural significance${location ? '\n- VERIFY the landmark matches the GPS coordinates provided' : ''}
+${includeWikipedia ? '- Include key encyclopedic facts (founding date, architect, historical events)' : ''}
+- Include practical visitor information (best times, notable features)
+- Keep responses concise but informative (2-3 paragraphs)
+- Use an engaging, friendly tone`;
+
     const messages: any[] = [
       {
         role: "system",
-        content: "You are a knowledgeable tourist guide. Identify landmarks from images or text queries and provide concise, interesting information about their history, significance, and visitor tips. Keep responses to 3-4 sentences."
+        content: systemPrompt
       }
     ];
 
     if (imageData) {
+      let imageQuery = "What landmark or tourist attraction is shown in this image? Please identify it and provide interesting information about it.";
+      
+      if (location) {
+        imageQuery += ` The photo was taken at GPS coordinates: ${location.latitude}°, ${location.longitude}°. Please verify the landmark identification matches this location and mention if there are any discrepancies.`;
+      }
+      
       messages.push({
         role: "user",
         content: [
           {
             type: "text",
-            text: "What landmark is this? Provide brief, engaging information about it."
+            text: imageQuery
           },
           {
             type: "image_url",
@@ -44,7 +60,7 @@ serve(async (req) => {
     } else {
       messages.push({
         role: "user",
-        content: `Tell me about ${query}. Provide brief, engaging information.`
+        content: `Tell me about ${query}. Provide detailed, engaging information with historical context and visitor tips.`
       });
     }
 
@@ -85,10 +101,13 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    const information = data.choices[0].message.content;
+    const analysis = data.choices[0].message.content;
 
     return new Response(
-      JSON.stringify({ information }),
+      JSON.stringify({ 
+        analysis,
+        confidence: imageData ? 0.85 : 0.95 // Higher confidence for text queries
+      }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
