@@ -75,7 +75,7 @@ Please suggest destinations matching my preferences. Calculate travel time from 
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.7,
+        temperature: 0.3,
       }),
     });
 
@@ -178,20 +178,31 @@ Please suggest destinations matching my preferences. Calculate travel time from 
       }
     }
 
-    // Calculate return time from last destination to home
+    // Calculate accurate return time from last destination to home
     let estimatedReturnTime = 0;
     if (optimizedRoute.length > 0) {
       const lastDestination = optimizedRoute[optimizedRoute.length - 1];
+      // Use distanceToSource (distance to home) with consistent speed calculation
       estimatedReturnTime = lastDestination.distanceToSource 
-        ? (lastDestination.distanceToSource / 40) * 60 // Assume 40 km/h average speed
-        : lastDestination.travelTimeFromSource;
+        ? (lastDestination.distanceToSource / 40) * 60 // 40 km/h average speed, result in minutes
+        : (lastDestination.distanceFromSource / 40) * 60; // Fallback to source distance
     }
+
+    // Calculate total trip time including all visits, travels, and return
+    const totalVisitTime = optimizedRoute.reduce((sum, d) => sum + d.visitTime, 0);
+    const totalTravelTime = optimizedRoute.reduce((sum, d) => sum + d.travelTimeFromSource, 0);
+    const actualTotalTime = totalVisitTime + totalTravelTime + estimatedReturnTime;
+    
+    // Recalculate remaining time based on actual total
+    remainingTime = availableMinutes - actualTotalTime;
 
     const summary = {
       totalLocations: optimizedRoute.length,
       averageRating: optimizedRoute.reduce((sum, d) => sum + d.rating, 0) / (optimizedRoute.length || 1),
       totalDistance: optimizedRoute.reduce((sum, d) => sum + d.distanceFromSource, 0),
-      totalVisitTime: optimizedRoute.reduce((sum, d) => sum + d.visitTime, 0),
+      totalVisitTime,
+      totalTravelTime,
+      totalTripTime: actualTotalTime,
       averageScore: optimizedRoute.reduce((sum, d) => sum + (d.score || 0), 0) / (optimizedRoute.length || 1),
     };
 
