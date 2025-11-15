@@ -94,9 +94,30 @@ const VoiceMode = () => {
 
     recognitionRef.current = recognition;
 
+    // Cleanup function to stop speech and recognition
     return () => {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [language]);
+
+  // Stop speech synthesis on page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
       }
     };
   }, []);
@@ -180,33 +201,46 @@ const VoiceMode = () => {
       // Wait for voices to load
       const speak = () => {
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.85;
+        utterance.rate = 0.9;
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
         
-        // Select best voice for language
+        // Select best voice for language with prioritization
         const voices = window.speechSynthesis.getVoices();
         const langCode = language.split('-')[0];
+        const fullLang = language;
         
-        // Find best matching voice
-        const perfectMatch = voices.find(v => v.lang === language);
-        const langMatch = voices.find(v => v.lang.startsWith(langCode));
+        // Find best matching voice with quality prioritization
+        const perfectMatch = voices.find(v => v.lang === fullLang && v.localService);
+        const perfectMatchRemote = voices.find(v => v.lang === fullLang);
+        const langMatch = voices.find(v => v.lang.startsWith(langCode) && v.localService);
+        const langMatchRemote = voices.find(v => v.lang.startsWith(langCode));
         const defaultVoice = voices.find(v => v.default);
         
-        utterance.voice = perfectMatch || langMatch || defaultVoice || voices[0];
+        // Prefer local, high-quality voices for Indian languages
+        utterance.voice = perfectMatch || perfectMatchRemote || langMatch || langMatchRemote || defaultVoice || voices[0];
+        
+        console.log('Selected voice:', utterance.voice?.name, 'Lang:', utterance.voice?.lang);
         
         utterance.onend = () => setIsSpeaking(false);
-        utterance.onerror = () => setIsSpeaking(false);
+        utterance.onerror = (e) => {
+          console.error('Speech synthesis error:', e);
+          setIsSpeaking(false);
+        };
         
         window.speechSynthesis.cancel(); // Clear queue
         window.speechSynthesis.speak(utterance);
       };
       
       // Ensure voices are loaded
-      if (window.speechSynthesis.getVoices().length > 0) {
+      const voicesList = window.speechSynthesis.getVoices();
+      if (voicesList.length > 0) {
         speak();
       } else {
-        window.speechSynthesis.onvoiceschanged = speak;
+        window.speechSynthesis.onvoiceschanged = () => {
+          speak();
+          window.speechSynthesis.onvoiceschanged = null;
+        };
       }
     }
   };

@@ -1,4 +1,4 @@
-import { useState, ChangeEvent, useRef } from "react";
+import { useState, ChangeEvent, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Upload, Loader2, Image as ImageIcon, Camera, TrendingUp, Volume2 } from "lucide-react";
@@ -17,27 +17,55 @@ const ImageMode = () => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const { language } = useUserLanguage();
 
+  // Cleanup speech synthesis on unmount and page navigation
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
   const speakResponse = (text: string) => {
     if ('speechSynthesis' in window) {
       setIsSpeaking(true);
       
       const speak = () => {
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.85;
+        utterance.rate = 0.9;
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
         
+        // Select best voice for language with quality prioritization
         const voices = window.speechSynthesis.getVoices();
         const langCode = language.split('-')[0];
+        const fullLang = language;
         
-        const perfectMatch = voices.find(v => v.lang === language);
-        const langMatch = voices.find(v => v.lang.startsWith(langCode));
+        // Find best matching voice with quality prioritization
+        const perfectMatch = voices.find(v => v.lang === fullLang && v.localService);
+        const perfectMatchRemote = voices.find(v => v.lang === fullLang);
+        const langMatch = voices.find(v => v.lang.startsWith(langCode) && v.localService);
+        const langMatchRemote = voices.find(v => v.lang.startsWith(langCode));
         const defaultVoice = voices.find(v => v.default);
         
-        utterance.voice = perfectMatch || langMatch || defaultVoice || voices[0];
+        // Prefer local, high-quality voices for Indian languages
+        utterance.voice = perfectMatch || perfectMatchRemote || langMatch || langMatchRemote || defaultVoice || voices[0];
+        
+        console.log('Selected voice:', utterance.voice?.name, 'Lang:', utterance.voice?.lang);
         
         utterance.onend = () => setIsSpeaking(false);
-        utterance.onerror = () => setIsSpeaking(false);
+        utterance.onerror = (e) => {
+          console.error('Speech synthesis error:', e);
+          setIsSpeaking(false);
+        };
         
         window.speechSynthesis.cancel();
         window.speechSynthesis.speak(utterance);
