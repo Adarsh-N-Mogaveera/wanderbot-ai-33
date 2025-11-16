@@ -1,48 +1,92 @@
 import { useState, ChangeEvent, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Upload, Loader2, Image as ImageIcon, Camera, TrendingUp, Volume2 } from "lucide-react";
+import { Upload, Loader2, Image as ImageIcon, Camera, TrendingUp, Volume2, Play, Pause } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserLanguage } from "@/hooks/useUserLanguage";
+import { saveSpeechState, loadSpeechState, clearSpeechState, updatePauseState } from "@/lib/speechPersistence";
 
 const ImageMode = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [result, setResult] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [confidence, setConfidence] = useState<number | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [canResume, setCanResume] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const currentTextRef = useRef<string>("");
   const { toast } = useToast();
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const { language } = useUserLanguage();
+  const { language, isLoading: isLanguageLoading } = useUserLanguage();
 
-  // Cleanup speech synthesis on unmount and page navigation
+  // Check for saved speech state on mount
+  useEffect(() => {
+    const savedState = loadSpeechState();
+    if (savedState && savedState.isPaused) {
+      setResult(savedState.text);
+      currentTextRef.current = savedState.text;
+      setCanResume(true);
+      setIsPaused(true);
+    }
+  }, []);
+
+  // Handle page unload and visibility changes - save state
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
+      if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
+        window.speechSynthesis.pause();
+        if (currentTextRef.current) {
+          saveSpeechState(currentTextRef.current, language, true);
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden && window.speechSynthesis.speaking) {
+        window.speechSynthesis.pause();
+        setIsPaused(true);
+        setCanResume(true);
+        if (currentTextRef.current) {
+          saveSpeechState(currentTextRef.current, language, true);
+        }
       }
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
+        window.speechSynthesis.pause();
+        if (currentTextRef.current) {
+          saveSpeechState(currentTextRef.current, language, true);
+        }
       }
     };
-  }, []);
+  }, [language]);
 
-  const speakResponse = (text: string) => {
+  const speakResponse = (text: string, isResume: boolean = false) => {
     if ('speechSynthesis' in window) {
+      currentTextRef.current = text;
       setIsSpeaking(true);
+      setIsPaused(false);
+      setCanResume(false);
+      
+      if (!isResume) {
+        clearSpeechState();
+      }
       
       const speak = () => {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.rate = 0.9;
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
+        utterance.lang = language;
         
         // Select best voice for language with quality prioritization
         const voices = window.speechSynthesis.getVoices();
@@ -56,19 +100,38 @@ const ImageMode = () => {
         const langMatchRemote = voices.find(v => v.lang.startsWith(langCode));
         const defaultVoice = voices.find(v => v.default);
         
-        // Prefer local, high-quality voices for Indian languages
         utterance.voice = perfectMatch || perfectMatchRemote || langMatch || langMatchRemote || defaultVoice || voices[0];
         
-        console.log('Selected voice:', utterance.voice?.name, 'Lang:', utterance.voice?.lang);
+        console.log('Selected voice:', utterance.voice?.name, 'Lang:', utterance.voice?.lang, 'Language setting:', language);
         
-        utterance.onend = () => setIsSpeaking(false);
+        utterance.onend = () => {
+          setIsSpeaking(false);
+          setIsPaused(false);
+          setCanResume(false);
+          clearSpeechState();
+        };
+        
         utterance.onerror = (e) => {
           console.error('Speech synthesis error:', e);
           setIsSpeaking(false);
+          setIsPaused(false);
+          if (e.error !== 'interrupted') {
+            toast({
+              title: "Speech Error",
+              description: "Failed to play narration. Please try again.",
+              variant: "destructive",
+            });
+          }
         };
         
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(utterance);
+        utteranceRef.current = utterance;
+        
+        if (isResume) {
+          window.speechSynthesis.resume();
+        } else {
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(utterance);
+        }
       };
       
       if (window.speechSynthesis.getVoices().length > 0) {
@@ -79,10 +142,38 @@ const ImageMode = () => {
     }
   };
 
+  const pauseSpeaking = () => {
+    if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
+      window.speechSynthesis.pause();
+      setIsSpeaking(false);
+      setIsPaused(true);
+      setCanResume(true);
+      if (currentTextRef.current) {
+        saveSpeechState(currentTextRef.current, language, true);
+      }
+    }
+  };
+
+  const resumeSpeaking = () => {
+    if ('speechSynthesis' in window && window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+      setIsSpeaking(true);
+      setIsPaused(false);
+      setCanResume(false);
+      updatePauseState(false);
+    } else if (currentTextRef.current) {
+      speakResponse(currentTextRef.current, false);
+    }
+  };
+
   const stopSpeaking = () => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       setIsSpeaking(false);
+      setIsPaused(false);
+      setCanResume(false);
+      clearSpeechState();
+      currentTextRef.current = "";
     }
   };
 
@@ -286,17 +377,41 @@ const ImageMode = () => {
                 <ImageIcon className="w-4 h-4 text-accent" />
                 <h3 className="font-semibold text-sm">Landmark Information:</h3>
               </div>
-              {isSpeaking && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={stopSpeaking}
-                  className="gap-1"
-                >
-                  <Volume2 className="w-3 h-3" />
-                  Stop
-                </Button>
-              )}
+              <div className="flex gap-2">
+                {isSpeaking && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={pauseSpeaking}
+                    className="gap-1"
+                  >
+                    <Pause className="w-3 h-3" />
+                    Pause
+                  </Button>
+                )}
+                {(isPaused || canResume) && (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={resumeSpeaking}
+                    className="gap-1"
+                  >
+                    <Play className="w-3 h-3" />
+                    Resume Narration
+                  </Button>
+                )}
+                {(isSpeaking || isPaused || canResume) && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={stopSpeaking}
+                    className="gap-1"
+                  >
+                    <Volume2 className="w-3 h-3" />
+                    Stop
+                  </Button>
+                )}
+              </div>
             </div>
             <p className="text-sm leading-relaxed">{result}</p>
             {confidence && (

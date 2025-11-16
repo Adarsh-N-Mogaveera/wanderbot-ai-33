@@ -1,24 +1,48 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Mic, Volume2, Loader2, MicOff } from "lucide-react";
+import { Mic, Volume2, Loader2, MicOff, Play, Pause } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserLanguage } from "@/hooks/useUserLanguage";
+import { saveSpeechState, loadSpeechState, clearSpeechState, updatePauseState } from "@/lib/speechPersistence";
 
 const VoiceMode = () => {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [query, setQuery] = useState("");
   const [response, setResponse] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
   const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
+  const [canResume, setCanResume] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const currentTextRef = useRef<string>("");
   const { toast } = useToast();
-  const { language } = useUserLanguage();
+  const { language, isLoading: isLanguageLoading } = useUserLanguage();
 
+  // Check for saved speech state on mount
   useEffect(() => {
+    const savedState = loadSpeechState();
+    if (savedState && savedState.isPaused) {
+      setResponse(savedState.text);
+      currentTextRef.current = savedState.text;
+      setCanResume(true);
+      setIsPaused(true);
+      
+      toast({
+        title: "Previous narration available",
+        description: "You can resume your previous narration",
+      });
+    }
+  }, []);
+
+  // Initialize speech recognition with language support
+  useEffect(() => {
+    if (isLanguageLoading) return;
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     
     if (!SpeechRecognition) {
@@ -34,7 +58,6 @@ const VoiceMode = () => {
           setMicPermission(result.state as any);
         };
       }).catch(() => {
-        // Permission API not supported, assume prompt
         setMicPermission('prompt');
       });
     }
@@ -49,7 +72,7 @@ const VoiceMode = () => {
       const transcript = event.results[0][0].transcript;
       const confidence = event.results[0][0].confidence;
       
-      console.log('Voice recognition result:', transcript, 'Confidence:', confidence);
+      console.log('Voice recognition result:', transcript, 'Confidence:', confidence, 'Language:', language);
       
       setQuery(transcript);
       handleQuery(transcript);
@@ -68,17 +91,14 @@ const VoiceMode = () => {
           variant: "destructive",
         });
       } else if (event.error === 'no-speech') {
-        // User didn't speak - don't show error, just stop
         return;
       } else if (event.error === 'network') {
-        // Network errors mean Google's servers are unreachable - don't retry
         toast({
           title: "Voice input unavailable",
           description: "Browser can't connect to speech service. Please use text search instead.",
           variant: "destructive",
         });
       } else if (event.error === 'aborted') {
-        // User stopped listening, no error needed
         return;
       } else {
         toast({
@@ -94,33 +114,50 @@ const VoiceMode = () => {
 
     recognitionRef.current = recognition;
 
-    // Cleanup function to stop speech and recognition
     return () => {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
+      // Pause speech instead of canceling on unmount
+      if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
+        window.speechSynthesis.pause();
+        if (currentTextRef.current) {
+          saveSpeechState(currentTextRef.current, language, true);
+        }
       }
     };
-  }, [language]);
+  }, [language, isLanguageLoading]);
 
-  // Stop speech synthesis on page unload
+  // Handle page unload - save state instead of canceling
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
+      if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
+        window.speechSynthesis.pause();
+        if (currentTextRef.current) {
+          saveSpeechState(currentTextRef.current, language, true);
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden && window.speechSynthesis.speaking) {
+        window.speechSynthesis.pause();
+        setIsPaused(true);
+        setCanResume(true);
+        if (currentTextRef.current) {
+          saveSpeechState(currentTextRef.current, language, true);
+        }
       }
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [language]);
 
   const handleQuery = async (queryText: string) => {
     if (!queryText.trim()) return;
@@ -194,18 +231,26 @@ const VoiceMode = () => {
     }
   };
 
-  const speakResponse = (text: string) => {
+  const speakResponse = (text: string, isResume: boolean = false) => {
     if ('speechSynthesis' in window) {
+      currentTextRef.current = text;
       setIsSpeaking(true);
+      setIsPaused(false);
+      setCanResume(false);
       
-      // Wait for voices to load
+      // Clear saved state when starting new speech
+      if (!isResume) {
+        clearSpeechState();
+      }
+      
       const speak = () => {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.rate = 0.9;
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
+        utterance.lang = language;
         
-        // Select best voice for language with prioritization
+        // Select best voice for language with quality prioritization
         const voices = window.speechSynthesis.getVoices();
         const langCode = language.split('-')[0];
         const fullLang = language;
@@ -217,22 +262,41 @@ const VoiceMode = () => {
         const langMatchRemote = voices.find(v => v.lang.startsWith(langCode));
         const defaultVoice = voices.find(v => v.default);
         
-        // Prefer local, high-quality voices for Indian languages
+        // Prefer local, high-quality voices
         utterance.voice = perfectMatch || perfectMatchRemote || langMatch || langMatchRemote || defaultVoice || voices[0];
         
-        console.log('Selected voice:', utterance.voice?.name, 'Lang:', utterance.voice?.lang);
+        console.log('Selected voice:', utterance.voice?.name, 'Lang:', utterance.voice?.lang, 'Language setting:', language);
         
-        utterance.onend = () => setIsSpeaking(false);
+        utterance.onend = () => {
+          setIsSpeaking(false);
+          setIsPaused(false);
+          setCanResume(false);
+          clearSpeechState();
+        };
+        
         utterance.onerror = (e) => {
           console.error('Speech synthesis error:', e);
           setIsSpeaking(false);
+          setIsPaused(false);
+          if (e.error !== 'interrupted') {
+            toast({
+              title: "Speech Error",
+              description: "Failed to play narration. Please try again.",
+              variant: "destructive",
+            });
+          }
         };
         
-        window.speechSynthesis.cancel(); // Clear queue
-        window.speechSynthesis.speak(utterance);
+        utteranceRef.current = utterance;
+        
+        if (isResume) {
+          window.speechSynthesis.resume();
+        } else {
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(utterance);
+        }
       };
       
-      // Ensure voices are loaded
       const voicesList = window.speechSynthesis.getVoices();
       if (voicesList.length > 0) {
         speak();
@@ -245,10 +309,39 @@ const VoiceMode = () => {
     }
   };
 
+  const pauseSpeaking = () => {
+    if ('speechSynthesis' in window && window.speechSynthesis.speaking) {
+      window.speechSynthesis.pause();
+      setIsSpeaking(false);
+      setIsPaused(true);
+      setCanResume(true);
+      if (currentTextRef.current) {
+        saveSpeechState(currentTextRef.current, language, true);
+      }
+    }
+  };
+
+  const resumeSpeaking = () => {
+    if ('speechSynthesis' in window && window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+      setIsSpeaking(true);
+      setIsPaused(false);
+      setCanResume(false);
+      updatePauseState(false);
+    } else if (currentTextRef.current) {
+      // If synthesis was canceled, restart from beginning
+      speakResponse(currentTextRef.current, false);
+    }
+  };
+
   const stopSpeaking = () => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       setIsSpeaking(false);
+      setIsPaused(false);
+      setCanResume(false);
+      clearSpeechState();
+      currentTextRef.current = "";
     }
   };
 
@@ -317,17 +410,41 @@ const VoiceMode = () => {
                 <Volume2 className="w-4 h-4 text-accent" />
                 <h3 className="font-semibold text-sm">Response:</h3>
               </div>
-              {isSpeaking && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={stopSpeaking}
-                  className="gap-1"
-                >
-                  <Volume2 className="w-3 h-3" />
-                  Stop
-                </Button>
-              )}
+              <div className="flex gap-2">
+                {isSpeaking && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={pauseSpeaking}
+                    className="gap-1"
+                  >
+                    <Pause className="w-3 h-3" />
+                    Pause
+                  </Button>
+                )}
+                {(isPaused || canResume) && (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={resumeSpeaking}
+                    className="gap-1"
+                  >
+                    <Play className="w-3 h-3" />
+                    Resume Narration
+                  </Button>
+                )}
+                {(isSpeaking || isPaused || canResume) && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={stopSpeaking}
+                    className="gap-1"
+                  >
+                    <Volume2 className="w-3 h-3" />
+                    Stop
+                  </Button>
+                )}
+              </div>
             </div>
             <p className="text-sm leading-relaxed">{response}</p>
           </div>
