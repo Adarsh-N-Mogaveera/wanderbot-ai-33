@@ -7,6 +7,7 @@ import { MapPin, Clock, Star, Navigation, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
+import { formatMinutesToHoursAndMinutes } from "@/lib/timeUtils";
 
 interface Destination {
   name: string;
@@ -215,7 +216,7 @@ const TripPlanner = () => {
                   </div>
                   <div className="space-y-1">
                     <p className="text-muted-foreground">Free Time Left</p>
-                    <p className="font-medium">{Math.round(result.remainingTime)} min</p>
+                    <p className="font-medium">{formatMinutesToHoursAndMinutes(result.remainingTime)}</p>
                   </div>
                 </div>
               </div>
@@ -278,7 +279,7 @@ const TripPlanner = () => {
                 {result.estimatedReturnTime > 0 && (
                   <div className="p-3 bg-accent/5 rounded-lg border border-accent/20">
                     <p className="text-sm">
-                      <span className="font-medium">Return journey:</span> ~{Math.round(result.estimatedReturnTime)} minutes back to {homeAddress || result.startLocation}
+                      <span className="font-medium">Return journey:</span> ~{formatMinutesToHoursAndMinutes(result.estimatedReturnTime)} back to {homeAddress || result.startLocation}
                     </p>
                   </div>
                 )}
