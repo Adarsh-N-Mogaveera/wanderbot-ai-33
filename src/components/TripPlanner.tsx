@@ -22,21 +22,6 @@ interface Destination {
   coordinates: { lat: number; lng: number };
 }
 
-interface Destination {
-  name: string;
-  description: string;
-  visitTime: number;
-  rating: number;
-  distanceFromSource: number;
-  travelTimeFromSource: number;
-  distanceToSource: number;
-  category: string;
-  score?: number;
-  popularity?: number;
-  openingHours?: string;
-  bestTimeToVisit?: string;
-  crowdLevel?: string;
-}
 
 const TripPlanner = () => {
   const [availableTime, setAvailableTime] = useState("3"); // Default to 3 hours
