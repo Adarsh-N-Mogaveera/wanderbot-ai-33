@@ -16,7 +16,6 @@ const ImageMode = () => {
     fun_facts: string[];
   } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [confidence, setConfidence] = useState<number | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [canResume, setCanResume] = useState(false);
