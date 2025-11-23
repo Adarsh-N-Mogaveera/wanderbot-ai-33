@@ -11,115 +11,38 @@ serve(async (req) => {
   }
 
   try {
-    const { query, imageData, location, includeWikipedia } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const { image } = await req.json();
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!image) {
+      throw new Error("No image data provided.");
     }
 
-    let systemPrompt = `You are an expert travel guide AI specializing in landmarks and tourist attractions worldwide.
+    // In a real implementation, this is where you would call external services:
+    // 1. Image Recognition API to get the landmark name from the image.
+    // 2. Wikipedia API to fetch details about the landmark.
+    // 3. Text Summarization API to create a summary and extract fun facts.
 
-When analyzing images or answering queries:
-- Identify the landmark with high confidence
-- Provide fascinating historical facts and cultural significance${location ? '\n- VERIFY the landmark matches the GPS coordinates provided' : ''}
-${includeWikipedia ? '- Include key encyclopedic facts (founding date, architect, historical events)' : ''}
-- Include practical visitor information (best times, notable features)
-- Keep responses concise but informative (2-3 paragraphs)
-- Use an engaging, friendly tone`;
+    // For this prototype, we'll return a static, mocked response.
+    const responsePayload = {
+      name: "Eiffel Tower",
+      summary: "The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. It is named after the engineer Gustave Eiffel, whose company designed and built the tower from 1887 to 1889.",
+      coordinates: { lat: 48.8584, lng: 2.2945 },
+      fun_facts: [
+        "The tower was the main exhibit of the 1889 Exposition Universelle (World's Fair).",
+        "It is repainted every seven years, a process that requires 60 tons of paint.",
+        "The tower's height changes by up to 15 cm (6 in) due to temperature fluctuations."
+      ]
+    };
 
-    const messages: any[] = [
-      {
-        role: "system",
-        content: systemPrompt
-      }
-    ];
-
-    if (imageData) {
-      let imageQuery = "What landmark or tourist attraction is shown in this image? Please identify it and provide interesting information about it.";
-      
-      if (location) {
-        imageQuery += ` The photo was taken at GPS coordinates: ${location.latitude}°, ${location.longitude}°. Please verify the landmark identification matches this location and mention if there are any discrepancies.`;
-      }
-      
-      messages.push({
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: imageQuery
-          },
-          {
-            type: "image_url",
-            image_url: {
-              url: imageData
-            }
-          }
-        ]
-      });
-    } else {
-      messages.push({
-        role: "user",
-        content: `Tell me about ${query}. Provide detailed, engaging information with historical context and visitor tips.`
-      });
-    }
-
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: messages,
-      }),
+    return new Response(JSON.stringify(responsePayload), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limits exceeded, please try again later." }),
-          {
-            status: 429,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Payment required, please add funds to your Lovable AI workspace." }),
-          {
-            status: 402,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
-      const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error("AI gateway error");
-    }
-
-    const data = await response.json();
-    const analysis = data.choices[0].message.content;
-
-    return new Response(
-      JSON.stringify({ 
-        analysis,
-        confidence: imageData ? 0.85 : 0.95 // Higher confidence for text queries
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
   } catch (error) {
-    console.error("Error in analyze-landmark:", error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    return new Response(JSON.stringify({ error: error.message }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 400,
+    });
   }
 });
