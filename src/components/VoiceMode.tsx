@@ -347,93 +347,87 @@ const VoiceMode = () => {
 
   return (
     <div className="relative flex flex-col h-full w-full items-center justify-center bg-background p-4 md:p-6">
-      <div className="space-y-6">
+    {/* Top: Transcription */}
+    <div className="absolute top-0 left-0 right-0 p-4 pt-20 md:p-6 md:pt-24 flex justify-center">
+      {query && (
+        <Card className="p-4 bg-primary/5 border border-primary/20 animate-fade-in w-full max-w-2xl shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <Mic className="w-4 h-4 text-primary" />
+            <h3 className="font-semibold text-sm">You asked:</h3>
+          </div>
+          <p className="text-base">{query}</p>
+        </Card>
+      )}
+    </div>
 
-        <div className="flex flex-col items-center gap-6">
-          {!isSupported && (
-            <div className="p-4 bg-destructive/10 text-destructive rounded-lg text-sm text-center">
-              <MicOff className="w-5 h-5 mx-auto mb-2" />
-              Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari.
-            </div>
-          )}
-          
-          <Button
-            size="lg"
-            onClick={isListening ? stopListening : startListening}
-            disabled={!isSupported || isLoading}
-            className="h-24 w-24 md:h-32 md:w-32 rounded-full shadow-elegant hover:shadow-glow transition-all"
-          >
-            {isListening ? (
-              <Mic className="w-10 h-10 md:w-12 md:h-12 animate-pulse text-red-500" />
-            ) : isLoading ? (
-              <Loader2 className="w-10 h-10 md:w-12 md:h-12 animate-spin" />
-            ) : (
-              <Mic className="w-10 h-10 md:w-12 md:h-12" />
-            )}
-          </Button>
+    {/* Center: Mic Visualizer */}
+    <div className="flex flex-col items-center gap-4 text-center">
+      <Button
+        size="lg"
+        onClick={isListening ? stopListening : startListening}
+        disabled={!isSupported || isLoading}
+        className="h-28 w-28 md:h-36 md:w-36 rounded-full shadow-elegant hover:shadow-glow transition-all flex items-center justify-center"
+      >
+        {isListening ? (
+          <Mic className="w-12 h-12 md:w-16 md:h-16 animate-pulse text-red-500" />
+        ) : isLoading ? (
+          <Loader2 className="w-12 h-12 md:w-16 md:h-16 animate-spin" />
+        ) : (
+          <Mic className="w-12 h-12 md:w-16 md:h-16" />
+        )}
+      </Button>
+      <p className="text-base text-muted-foreground">
+        {isListening ? "Listening..." : isLoading ? "Analyzing..." : "Tap to speak"}
+      </p>
 
-          <p className="text-sm text-muted-foreground text-center">
-            {isListening ? "Listening..." : isLoading ? "Analyzing..." : "Tap to speak"}
-          </p>
+      {micPermission === 'denied' && (
+        <div className="p-3 bg-destructive/10 text-destructive rounded-lg text-sm max-w-sm">
+          ⚠️ Microphone access denied. Please enable it in browser settings.
         </div>
+      )}
+      {!isSupported && (
+        <div className="p-3 bg-amber-500/10 text-amber-700 rounded-lg text-sm max-w-sm">
+          💡 Voice input is not supported in this browser. Please use Chrome, Edge, or Safari.
+        </div>
+      )}
+    </div>
 
-        {query && (
-          <div className="p-4 bg-primary/5 rounded-lg border border-primary/20 animate-fade-in">
-            <div className="flex items-center gap-2 mb-2">
-              <Mic className="w-4 h-4 text-primary" />
-              <h3 className="font-semibold text-sm">You asked:</h3>
+    {/* Bottom: Response Card */}
+    {response && (
+      <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 w-full flex justify-center">
+        <Card className="p-4 w-full max-w-3xl animate-slide-up-fade shadow-lg">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Volume2 className="w-5 h-5 text-accent" />
+              <h3 className="font-semibold text-base">Wanderbot says:</h3>
             </div>
-            <p className="text-sm">{query}</p>
-          </div>
-        )}
-
-        {response && (
-          <div className="p-4 bg-accent/5 rounded-lg border border-accent/20 animate-fade-in">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Volume2 className="w-4 h-4 text-accent" />
-                <h3 className="font-semibold text-sm">Response:</h3>
-              </div>
-              <div className="flex gap-2">
-                {isSpeaking && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={pauseSpeaking}
-                    className="gap-1"
-                  >
-                    <Pause className="w-3 h-3" />
-                    Pause
-                  </Button>
-                )}
-                {(isPaused || canResume) && (
-                  <Button
-                    size="sm"
-                    variant="default"
-                    onClick={resumeSpeaking}
-                    className="gap-1"
-                  >
-                    <Play className="w-3 h-3" />
-                    Resume Narration
-                  </Button>
-                )}
-                {(isSpeaking || isPaused || canResume) && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={stopSpeaking}
-                    className="gap-1"
-                  >
-                    <Volume2 className="w-3 h-3" />
-                    Stop
-                  </Button>
-                )}
-              </div>
+            <div className="flex gap-1">
+              {isSpeaking && (
+                <Button size="sm" variant="ghost" onClick={pauseSpeaking} className="gap-1">
+                  <Pause className="w-4 h-4" />
+                  Pause
+                </Button>
+              )}
+              {(isPaused || canResume) && (
+                <Button size="sm" variant="default" onClick={resumeSpeaking} className="gap-1">
+                  <Play className="w-4 h-4" />
+                  Resume
+                </Button>
+              )}
+              {(isSpeaking || isPaused || canResume) && (
+                <Button size="sm" variant="ghost" onClick={stopSpeaking} className="gap-1">
+                  <MicOff className="w-4 h-4" />
+                  Stop
+                </Button>
+              )}
             </div>
-            <p className="text-sm leading-relaxed">{response}</p>
           </div>
-        )}
+          <div className="max-h-[30vh] overflow-y-auto pr-2">
+            <p className="text-base leading-relaxed">{response}</p>
+          </div>
+        </Card>
       </div>
+    )}
     </Card>
   );
 };
