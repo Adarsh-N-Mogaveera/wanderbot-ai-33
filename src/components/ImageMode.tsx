@@ -9,7 +9,12 @@ import { saveSpeechState, loadSpeechState, clearSpeechState, updatePauseState } 
 
 const ImageMode = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [result, setResult] = useState("");
+  const [result, setResult] = useState<{
+    name: string;
+    summary: string;
+    coordinates: { lat: number; lng: number };
+    fun_facts: string[];
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [confidence, setConfidence] = useState<number | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
