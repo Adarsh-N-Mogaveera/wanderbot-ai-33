@@ -220,63 +220,29 @@ const ImageMode = () => {
     fileInputRef.current?.click();
   };
 
-  const analyzeImage = async (imageData: string, useLocation: boolean = false) => {
+  const analyzeImage = async (imageData: string) => {
     setIsLoading(true);
-    setResult("");
+    setResult(null);
 
     try {
-      let location = null;
-      
-      // Get GPS location if requested (from Capture)
-      if (useLocation && 'geolocation' in navigator) {
-        try {
-          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: true,
-              timeout: 5000,
-            });
-          });
-          
-          location = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          };
-          
-          toast({
-            title: "Location obtained",
-            description: "Using your location to verify landmark",
-          });
-        } catch (geoError) {
-          console.log('Location not available:', geoError);
-          // Continue without location
-        }
-      }
-
       const { data, error } = await supabase.functions.invoke('analyze-landmark', {
-        body: { 
-          imageData,
-          location,
-          includeWikipedia: true,
-        },
+        body: { image: imageData },
       });
 
       if (error) throw error;
 
-      const landmarkInfo = data.analysis;
-      setResult(landmarkInfo);
-      
-      // Extract confidence if present in response
-      if (data.confidence) {
-        setConfidence(data.confidence);
+      setResult(data);
+
+      // Speak the summary
+      if (data.summary) {
+        speakResponse(data.summary);
       }
-      
-      // Speak the result
-      speakResponse(landmarkInfo);
-      
+
       toast({
         title: "Analysis complete",
-        description: "Landmark identified successfully",
+        description: data.name || "Landmark identified",
       });
+
     } catch (error) {
       console.error('Error analyzing image:', error);
       toast({
