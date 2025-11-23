@@ -39,6 +39,34 @@ const TripPlanner = () => {
   });
   const { toast } = useToast();
 
+  const getCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setCurrentLocation({ lat: latitude, lng: longitude });
+          setViewState(prev => ({ ...prev, latitude, longitude, zoom: 14 }));
+          toast({ title: "Location updated!" });
+        },
+        (error) => {
+          console.error("Geolocation error:", error);
+          toast({
+            title: "Location Error",
+            description: "Could not retrieve your location. Please enter it manually.",
+            variant: "destructive",
+          });
+        }
+      );
+    } else {
+      toast({
+        title: "Geolocation Not Supported",
+        description: "Your browser does not support geolocation.",
+        variant: "destructive",
+      });
+    }
+  };
+
+
 
   const generateItinerary = async () => {
     if (!currentLocation) {
