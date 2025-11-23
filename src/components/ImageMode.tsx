@@ -9,13 +9,9 @@ import { saveSpeechState, loadSpeechState, clearSpeechState, updatePauseState } 
 
 const ImageMode = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [result, setResult] = useState<{
-    name: string;
-    summary: string;
-    coordinates: { lat: number; lng: number };
-    fun_facts: string[];
-  } | null>(null);
+  const [result, setResult] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [confidence, setConfidence] = useState<number | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [canResume, setCanResume] = useState(false);
@@ -181,7 +177,7 @@ const ImageMode = () => {
     }
   };
 
-  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>, fromCamera: boolean = false) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 20 * 1024 * 1024) {
@@ -197,7 +193,8 @@ const ImageMode = () => {
       reader.onloadend = () => {
         const base64String = reader.result as string;
         setSelectedImage(base64String);
-        analyzeImage(base64String);
+        // Use location verification for camera captures
+        analyzeImage(base64String, fromCamera);
       };
       reader.readAsDataURL(file);
     }
@@ -219,29 +216,63 @@ const ImageMode = () => {
     fileInputRef.current?.click();
   };
 
-  const analyzeImage = async (imageData: string) => {
+  const analyzeImage = async (imageData: string, useLocation: boolean = false) => {
     setIsLoading(true);
-    setResult(null);
+    setResult("");
 
     try {
+      let location = null;
+      
+      // Get GPS location if requested (from Capture)
+      if (useLocation && 'geolocation' in navigator) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 5000,
+            });
+          });
+          
+          location = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          };
+          
+          toast({
+            title: "Location obtained",
+            description: "Using your location to verify landmark",
+          });
+        } catch (geoError) {
+          console.log('Location not available:', geoError);
+          // Continue without location
+        }
+      }
+
       const { data, error } = await supabase.functions.invoke('analyze-landmark', {
-        body: { image: imageData },
+        body: { 
+          imageData,
+          location,
+          includeWikipedia: true,
+        },
       });
 
       if (error) throw error;
 
-      setResult(data);
-
-      // Speak the summary
-      if (data.summary) {
-        speakResponse(data.summary);
+      const landmarkInfo = data.analysis;
+      setResult(landmarkInfo);
+      
+      // Extract confidence if present in response
+      if (data.confidence) {
+        setConfidence(data.confidence);
       }
-
+      
+      // Speak the result
+      speakResponse(landmarkInfo);
+      
       toast({
         title: "Analysis complete",
-        description: data.name || "Landmark identified",
+        description: "Landmark identified successfully",
       });
-
     } catch (error) {
       console.error('Error analyzing image:', error);
       toast({
@@ -270,7 +301,7 @@ const ImageMode = () => {
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              onChange={handleImageUpload}
+              onChange={(e) => handleImageUpload(e, false)}
               className="hidden"
               disabled={isLoading}
             />
@@ -279,7 +310,7 @@ const ImageMode = () => {
               type="file"
               accept="image/*"
               capture="environment"
-              onChange={handleImageUpload}
+              onChange={(e) => handleImageUpload(e, true)}
               className="hidden"
               disabled={isLoading}
             />
@@ -340,28 +371,56 @@ const ImageMode = () => {
         </div>
 
         {result && (
-          <Card className="p-4 w-full animate-fade-in space-y-4 shadow-lg">
-            <div>
-              <h3 className="font-bold text-xl mb-2">{result.name}</h3>
-              <p className="text-base leading-relaxed">{result.summary}</p>
+          <div className="p-4 bg-accent/5 rounded-lg border border-accent/20 animate-fade-in space-y-2">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-accent" />
+                <h3 className="font-semibold text-sm">Landmark Information:</h3>
+              </div>
+              <div className="flex gap-2">
+                {isSpeaking && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={pauseSpeaking}
+                    className="gap-1"
+                  >
+                    <Pause className="w-3 h-3" />
+                    Pause
+                  </Button>
+                )}
+                {(isPaused || canResume) && (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={resumeSpeaking}
+                    className="gap-1"
+                  >
+                    <Play className="w-3 h-3" />
+                    Resume Narration
+                  </Button>
+                )}
+                {(isSpeaking || isPaused || canResume) && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={stopSpeaking}
+                    className="gap-1"
+                  >
+                    <Volume2 className="w-3 h-3" />
+                    Stop
+                  </Button>
+                )}
+              </div>
             </div>
-
-            <div>
-              <h4 className="font-semibold text-lg mb-2">Fun Facts</h4>
-              <ul className="list-disc list-inside space-y-1 text-base">
-                {result.fun_facts.map((fact, index) => (
-                  <li key={index}>{fact}</li>
-                ))}
-              </ul>
-            </div>
-
-            <Button
-              onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${result.coordinates.lat},${result.coordinates.lng}`, '_blank')}
-              className="w-full"
-            >
-              View on Map
-            </Button>
-          </Card>
+            <p className="text-sm leading-relaxed">{result}</p>
+            {confidence && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2 border-t border-accent/20">
+                <TrendingUp className="w-4 h-4" />
+                <span>Confidence: {(confidence * 100).toFixed(0)}%</span>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </Card>
