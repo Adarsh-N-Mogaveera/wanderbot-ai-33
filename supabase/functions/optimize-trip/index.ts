@@ -25,16 +25,31 @@ serve(async (req) => {
         name: "Museum of Modern Art",
         rating: 4.6,
         coordinates: { lat: 40.7614, lng: -73.9776 },
+        description: "Home to a world-class collection of modern and contemporary art.",
+        visitTime: 120,
+        travelTime: 15,
+        distance: 2.5,
+        distanceToHome: 8.1
       },
       {
         name: "Central Park",
         rating: 4.8,
         coordinates: { lat: 40.785091, lng: -73.968285 },
+        description: "An urban park in Manhattan, offering a green oasis with trails, a zoo, and a carousel.",
+        visitTime: 90,
+        travelTime: 20,
+        distance: 3.1,
+        distanceToHome: 10.2
       },
       {
         name: "Times Square",
         rating: 4.4,
         coordinates: { lat: 40.7580, lng: -73.9855 },
+        description: "A major commercial intersection, tourist destination, and entertainment center.",
+        visitTime: 45,
+        travelTime: 10,
+        distance: 1.8,
+        distanceToHome: 9.5
       },
     ];
 
