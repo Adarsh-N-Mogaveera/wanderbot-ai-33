@@ -26,12 +26,17 @@ interface Destination {
 }
 
 const TripPlanner = () => {
-  const [startLocation, setStartLocation] = useState("");
-  const [availableTime, setAvailableTime] = useState("");
-  const [result, setResult] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [availableTime, setAvailableTime] = useState("3"); // Default to 3 hours
   const [homeAddress, setHomeAddress] = useState("");
-  const [userPreferences, setUserPreferences] = useState<string[]>([]);
+  const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [interests, setInterests] = useState<string[]>([]);
+  const [result, setResult] = useState<{ route: any[]; polyline: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [viewState, setViewState] = useState({
+    longitude: -74.0060,
+    latitude: 40.7128,
+    zoom: 12
+  });
   const { toast } = useToast();
 
   useEffect(() => {
