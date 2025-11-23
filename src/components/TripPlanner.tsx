@@ -8,6 +8,8 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Map, Marker, Source, Layer } from 'react-map-gl';
+import { formatMinutesToHoursAndMinutes } from "@/lib/timeUtils";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Destination {
   name: string;
