@@ -185,10 +185,17 @@ const INTEREST_OPTIONS = ["Museums", "Restaurants", "Parks", "Shopping", "Histor
           {result && (
             <div className="space-y-4 pt-4 border-t border-border">
               <h3 className="font-bold text-lg">Your Optimized Itinerary</h3>
-              {result.route.map((place, index) => (
-                <Card key={index} className="p-3">
-                  <p className="font-semibold">{index + 1}. {place.name}</p>
-                  <p className="text-sm text-muted-foreground">Rating: {place.rating} / 5</p>
+              {result.route.map((place: Destination, index) => (
+                <Card key={index} className="p-3 space-y-2">
+                  <p className="font-semibold text-base">{index + 1}. {place.name}</p>
+                  <p className="text-sm text-muted-foreground">{place.description}</p>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <Badge variant="outline"><Star className="w-3 h-3 mr-1" /> {place.rating}</Badge>
+                    <Badge variant="outline"><Clock className="w-3 h-3 mr-1" /> {place.visitTime} min visit</Badge>
+                    <Badge variant="outline"><Navigation className="w-3 h-3 mr-1" /> {place.travelTime} min travel</Badge>
+                    <Badge variant="outline"><MapPin className="w-3 h-3 mr-1" /> {place.distance.toFixed(1)} km away</Badge>
+                    <Badge variant="outline"><Home className="w-3 h-3 mr-1" /> {place.distanceToHome.toFixed(1)} km to home</Badge>
+                  </div>
                 </Card>
               ))}
             </div>
