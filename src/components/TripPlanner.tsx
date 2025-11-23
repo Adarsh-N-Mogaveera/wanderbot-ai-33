@@ -3,73 +3,74 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MapPin, Clock, Star, Navigation, Sparkles } from "lucide-react";
+import { MapPin, Clock, Star, Navigation, Sparkles, Home } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
+import { Map, Marker, Source, Layer } from 'react-map-gl';
 import { formatMinutesToHoursAndMinutes } from "@/lib/timeUtils";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Destination {
   name: string;
   description: string;
   visitTime: number;
   rating: number;
-  distanceFromSource: number;
-  travelTimeFromSource: number;
-  distanceToSource: number;
-  category: string;
-  score?: number;
-  popularity?: number;
-  openingHours?: string;
-  bestTimeToVisit?: string;
-  crowdLevel?: string;
+  travelTime: number;
+  distance: number;
+  distanceToHome: number;
+  coordinates: { lat: number; lng: number };
 }
 
+
 const TripPlanner = () => {
-  const [startLocation, setStartLocation] = useState("");
-  const [availableTime, setAvailableTime] = useState("");
-  const [result, setResult] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [availableTime, setAvailableTime] = useState("3"); // Default to 3 hours
   const [homeAddress, setHomeAddress] = useState("");
-  const [userPreferences, setUserPreferences] = useState<string[]>([]);
+  const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [interests, setInterests] = useState<string[]>([]);
+  const [result, setResult] = useState<{ route: any[]; polyline: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [viewState, setViewState] = useState({
+    longitude: -74.0060,
+    latitude: 40.7128,
+    zoom: 12
+  });
   const { toast } = useToast();
 
-  useEffect(() => {
-    const loadProfile = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('home_address, travel_preferences')
-          .eq('user_id', session.user.id)
-          .single();
-        
-        if (profile?.home_address) {
-          setHomeAddress(profile.home_address);
+  const getCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setCurrentLocation({ lat: latitude, lng: longitude });
+          setViewState(prev => ({ ...prev, latitude, longitude, zoom: 14 }));
+          toast({ title: "Location updated!" });
+        },
+        (error) => {
+          console.error("Geolocation error:", error);
+          toast({
+            title: "Location Error",
+            description: "Could not retrieve your location. Please enter it manually.",
+            variant: "destructive",
+          });
         }
-        if (profile?.travel_preferences) {
-          setUserPreferences(profile.travel_preferences as string[]);
-        }
-      }
-    };
-    loadProfile();
-  }, []);
-
-  const generateItinerary = async () => {
-    if (!startLocation || !availableTime) {
+      );
+    } else {
       toast({
-        title: "Missing Information",
-        description: "Please enter your location and available time.",
+        title: "Geolocation Not Supported",
+        description: "Your browser does not support geolocation.",
         variant: "destructive",
       });
-      return;
     }
+  };
 
-    const timeValue = parseFloat(availableTime);
-    if (timeValue <= 0) {
+
+
+  const generateItinerary = async () => {
+    if (!currentLocation) {
       toast({
-        title: "Invalid Time",
-        description: "Please enter a valid time greater than 0.",
+        title: "Location Needed",
+        description: "Please set your current location first.",
         variant: "destructive",
       });
       return;
@@ -77,30 +78,40 @@ const TripPlanner = () => {
 
     setIsLoading(true);
     setResult(null);
-    
+
     try {
       const { data, error } = await supabase.functions.invoke('optimize-trip', {
         body: {
-          startLocation,
-          availableTime: timeValue,
-          homeAddress: homeAddress || startLocation,
-          userPreferences,
+          availableTime: parseFloat(availableTime) * 60, // Convert hours to minutes
+          homeLocation: homeAddress,
+          currentLocation,
+          preferences: interests,
         },
       });
 
       if (error) throw error;
 
       setResult(data);
+
+      if (data.route && data.route.length > 0) {
+        // Center map on the first destination
+        setViewState(prev => ({
+          ...prev,
+          latitude: data.route[0].coordinates.lat,
+          longitude: data.route[0].coordinates.lng,
+          zoom: 13,
+        }));
+      }
+
       toast({
         title: "Itinerary Generated!",
-        description: `Found ${data.optimizedRoute.length} perfect destinations for you`,
+        description: `Your optimized trip with ${data.route.length} stops is ready.`,
       });
     } catch (error) {
       console.error('Error generating itinerary:', error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to generate itinerary.";
       toast({
         title: "Error",
-        description: errorMessage + " Please try again.",
+        description: "Failed to generate itinerary. Please try again later.",
         variant: "destructive",
       });
     } finally {
@@ -121,195 +132,101 @@ const TripPlanner = () => {
     return colors[category.toLowerCase()] || "bg-accent/10 text-accent border-accent/20";
   };
 
+const INTEREST_OPTIONS = ["Museums", "Restaurants", "Parks", "Shopping", "Historical"];
+
+  const handleInterestChange = (interest: string) => {
+    setInterests(prev =>
+      prev.includes(interest)
+        ? prev.filter(i => i !== interest)
+        : [...prev, interest]
+    );
+  };
+
   return (
-    <div className="min-h-screen pb-6">
-      <Card className="p-4 md:p-6 max-w-2xl mx-auto">
+    <div className="flex h-screen bg-background">
+      {/* Left Panel: Controls & Itinerary */}
+      <div className="w-1/3 h-screen overflow-y-auto p-4 border-r border-border">
         <div className="space-y-6">
-          {/* Header */}
-          <div className="text-center space-y-2">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <Sparkles className="w-6 h-6 text-primary" />
-              <h2 className="text-2xl md:text-3xl font-bold">AI Trip Planner</h2>
-            </div>
-            <p className="text-sm md:text-base text-muted-foreground">
-              Get personalized destination recommendations based on ratings, distance, and your available time
-            </p>
+          <div className="text-center space-y-1">
+            <h2 className="text-2xl font-bold">Dynamic Trip Planner</h2>
+            <p className="text-sm text-muted-foreground">Your AI-powered travel assistant</p>
           </div>
 
           {/* Input Form */}
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="start" className="flex items-center gap-2">
-                <MapPin className="w-4 h-4" />
-                Your Location
-              </Label>
-              <Input
-                id="start"
-                placeholder="e.g., Paris, France"
-                value={startLocation}
-                onChange={(e) => setStartLocation(e.target.value)}
-                className="h-12 text-base"
-              />
+              <Label htmlFor="time">Available Time (hours)</Label>
+              <Input id="time" type="number" step="0.5" min="0.5" value={availableTime} onChange={(e) => setAvailableTime(e.target.value)} />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="home">Home/Hotel Address</Label>
+              <Input id="home" placeholder="e.g., 123 Main St, New York, NY" value={homeAddress} onChange={(e) => setHomeAddress(e.target.value)} />
+            </div>
+            <Button onClick={getCurrentLocation} variant="outline" className="w-full"> <MapPin className="w-4 h-4 mr-2" /> Get Current Location</Button>
 
             <div className="space-y-2">
-              <Label htmlFor="time" className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                Available Time (hours)
-              </Label>
-              <Input
-                id="time"
-                type="number"
-                step="0.5"
-                min="0.5"
-                placeholder="e.g., 4"
-                value={availableTime}
-                onChange={(e) => setAvailableTime(e.target.value)}
-                className="h-12 text-base"
-              />
+              <Label>Interests</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {INTEREST_OPTIONS.map(interest => (
+                  <div key={interest} className="flex items-center space-x-2">
+                    <Checkbox id={interest} checked={interests.includes(interest)} onCheckedChange={() => handleInterestChange(interest)} />
+                    <label htmlFor={interest} className="text-sm font-medium leading-none">{interest}</label>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <Button
-              onClick={generateItinerary}
-              disabled={isLoading}
-              className="w-full h-12 text-base font-medium"
-              size="lg"
-            >
-              {isLoading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-background border-t-transparent mr-2" />
-                  Generating Your Perfect Trip...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  Generate Itinerary
-                </>
-              )}
+            <Button onClick={generateItinerary} disabled={isLoading} className="w-full text-base font-medium" size="lg">
+              {isLoading ? "Generating..." : "Plan My Trip"}
             </Button>
           </div>
 
           {/* Results */}
           {result && (
-            <div className="space-y-4 animate-fade-in">
-              {/* Summary Card */}
-              <div className="p-4 bg-gradient-to-br from-primary/10 to-secondary/10 rounded-lg border border-primary/20">
-                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
-                  <Navigation className="w-5 h-5 text-primary" />
-                  Trip Overview
-                </h3>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="space-y-1">
-                    <p className="text-muted-foreground">Starting Point</p>
-                    <p className="font-medium">{result.startLocation}</p>
+            <div className="space-y-4 pt-4 border-t border-border">
+              <h3 className="font-bold text-lg">Your Optimized Itinerary</h3>
+              {result.route.map((place: Destination, index) => (
+                <Card key={index} className="p-3 space-y-2">
+                  <p className="font-semibold text-base">{index + 1}. {place.name}</p>
+                  <p className="text-sm text-muted-foreground">{place.description}</p>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <Badge variant="outline"><Star className="w-3 h-3 mr-1" /> {place.rating}</Badge>
+                    <Badge variant="outline"><Clock className="w-3 h-3 mr-1" /> {place.visitTime} min visit</Badge>
+                    <Badge variant="outline"><Navigation className="w-3 h-3 mr-1" /> {place.travelTime} min travel</Badge>
+                    <Badge variant="outline"><MapPin className="w-3 h-3 mr-1" /> {place.distance.toFixed(1)} km away</Badge>
+                    <Badge variant="outline"><Home className="w-3 h-3 mr-1" /> {place.distanceToHome.toFixed(1)} km to home</Badge>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-muted-foreground">Destinations</p>
-                    <p className="font-medium">{result.summary.totalLocations} places</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-muted-foreground">Average Rating</p>
-                    <p className="font-medium flex items-center gap-1">
-                      <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                      {result.summary.averageRating.toFixed(1)}/5
-                    </p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-muted-foreground">Free Time Left</p>
-                    <p className="font-medium">{formatMinutesToHoursAndMinutes(result.remainingTime)}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Optimized Route */}
-              <div className="space-y-3">
-                <h3 className="font-semibold text-lg flex items-center gap-2">
-                  <MapPin className="w-5 h-5 text-primary" />
-                  Your Optimized Itinerary
-                </h3>
-                
-                {result.optimizedRoute.map((destination: Destination, index: number) => (
-                  <Card key={index} className="p-4 hover:shadow-md transition-shadow">
-                    <div className="space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground text-sm font-bold">
-                              {index + 1}
-                            </span>
-                            <h4 className="font-semibold text-base">{destination.name}</h4>
-                          </div>
-                          <p className="text-sm text-muted-foreground ml-8">
-                            {destination.description}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                          <span className="font-medium text-sm">{destination.rating}</span>
-                        </div>
-                      </div>
-                      
-                      <div className="flex flex-wrap gap-2 ml-8">
-                        <Badge variant="outline" className={getCategoryColor(destination.category)}>
-                          {destination.category}
-                        </Badge>
-                        <Badge variant="outline" className="text-xs">
-                          <Clock className="w-3 h-3 mr-1" />
-                          {destination.visitTime} min visit
-                        </Badge>
-                        <Badge variant="outline" className="text-xs">
-                          <Navigation className="w-3 h-3 mr-1" />
-                          {destination.distanceFromSource.toFixed(1)} km away
-                        </Badge>
-                        <Badge variant="outline" className="text-xs">
-                          {destination.travelTimeFromSource} min travel
-                        </Badge>
-                        {destination.score && (
-                          <Badge variant="outline" className="text-xs bg-primary/5 border-primary/20">
-                            <Star className="w-3 h-3 mr-1" />
-                            Score: {(destination.score * 100).toFixed(0)}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-
-                {/* Return Info */}
-                {result.estimatedReturnTime > 0 && (
-                  <div className="p-3 bg-accent/5 rounded-lg border border-accent/20">
-                    <p className="text-sm">
-                      <span className="font-medium">Return journey:</span> ~{formatMinutesToHoursAndMinutes(result.estimatedReturnTime)} back to {homeAddress || result.startLocation}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Alternative Destinations */}
-              {result.skippedDestinations && result.skippedDestinations.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="font-semibold text-sm text-muted-foreground">
-                    Other Options (Not enough time)
-                  </h3>
-                  <div className="space-y-2">
-                    {result.skippedDestinations.slice(0, 3).map((destination: Destination, index: number) => (
-                      <div key={index} className="p-3 bg-muted/50 rounded-lg text-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">{destination.name}</span>
-                          <div className="flex items-center gap-1">
-                            <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                            <span className="text-xs">{destination.rating}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                </Card>
+              ))}
             </div>
           )}
         </div>
-      </Card>
+      </div>
+
+      {/* Right Panel: Map */}
+      <div className="w-2/3 h-screen">
+        <Map
+          {...viewState}
+          onMove={evt => setViewState(evt.viewState)}
+          style={{ width: '100%', height: '100%' }}
+          mapStyle="mapbox://styles/mapbox/streets-v11"
+          mapboxAccessToken={import.meta.env.VITE_MAPBOX_TOKEN}
+        >
+          {currentLocation && (
+            <Marker longitude={currentLocation.lng} latitude={currentLocation.lat} color="blue" />
+          )}
+          {result?.route.map((place, index) => (
+            <Marker key={index} longitude={place.coordinates.lng} latitude={place.coordinates.lat} color="red">
+              <div className="bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center font-bold">{index + 1}</div>
+            </Marker>
+          ))}
+          {result?.polyline && (
+            <Source id="route" type="geojson" data={{ type: 'Feature', geometry: { type: 'LineString', coordinates: result.polyline } }}>
+              <Layer type="line" layout={{ 'line-join': 'round', 'line-cap': 'round' }} paint={{ 'line-color': '#888', 'line-width': 4 }} />
+            </Source>
+          )}
+        </Map>
+      </div>
     </div>
   );
 };
