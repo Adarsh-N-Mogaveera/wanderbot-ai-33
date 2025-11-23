@@ -41,20 +41,10 @@ const TripPlanner = () => {
 
 
   const generateItinerary = async () => {
-    if (!startLocation || !availableTime) {
+    if (!currentLocation) {
       toast({
-        title: "Missing Information",
-        description: "Please enter your location and available time.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const timeValue = parseFloat(availableTime);
-    if (timeValue <= 0) {
-      toast({
-        title: "Invalid Time",
-        description: "Please enter a valid time greater than 0.",
+        title: "Location Needed",
+        description: "Please set your current location first.",
         variant: "destructive",
       });
       return;
@@ -62,30 +52,40 @@ const TripPlanner = () => {
 
     setIsLoading(true);
     setResult(null);
-    
+
     try {
       const { data, error } = await supabase.functions.invoke('optimize-trip', {
         body: {
-          startLocation,
-          availableTime: timeValue,
-          homeAddress: homeAddress || startLocation,
-          userPreferences,
+          availableTime: parseFloat(availableTime) * 60, // Convert hours to minutes
+          homeLocation: homeAddress,
+          currentLocation,
+          preferences: interests,
         },
       });
 
       if (error) throw error;
 
       setResult(data);
+
+      if (data.route && data.route.length > 0) {
+        // Center map on the first destination
+        setViewState(prev => ({
+          ...prev,
+          latitude: data.route[0].coordinates.lat,
+          longitude: data.route[0].coordinates.lng,
+          zoom: 13,
+        }));
+      }
+
       toast({
         title: "Itinerary Generated!",
-        description: `Found ${data.optimizedRoute.length} perfect destinations for you`,
+        description: `Your optimized trip with ${data.route.length} stops is ready.`,
       });
     } catch (error) {
       console.error('Error generating itinerary:', error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to generate itinerary.";
       toast({
         title: "Error",
-        description: errorMessage + " Please try again.",
+        description: "Failed to generate itinerary. Please try again later.",
         variant: "destructive",
       });
     } finally {
