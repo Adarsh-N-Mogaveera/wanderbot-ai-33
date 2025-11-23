@@ -39,26 +39,6 @@ const TripPlanner = () => {
   });
   const { toast } = useToast();
 
-  useEffect(() => {
-    const loadProfile = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('home_address, travel_preferences')
-          .eq('user_id', session.user.id)
-          .single();
-        
-        if (profile?.home_address) {
-          setHomeAddress(profile.home_address);
-        }
-        if (profile?.travel_preferences) {
-          setUserPreferences(profile.travel_preferences as string[]);
-        }
-      }
-    };
-    loadProfile();
-  }, []);
 
   const generateItinerary = async () => {
     if (!startLocation || !availableTime) {
