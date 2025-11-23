@@ -428,7 +428,6 @@ const VoiceMode = () => {
         </Card>
       </div>
     )}
-    </Card>
   );
 };
 
