@@ -346,7 +346,7 @@ const VoiceMode = () => {
   };
 
   return (
-    <Card className="p-6 md:p-8">
+    <div className="relative flex flex-col h-full w-full items-center justify-center bg-background p-4 md:p-6">
       <div className="space-y-6">
         <div className="text-center space-y-2">
           <h2 className="text-2xl md:text-3xl font-bold">Voice Query</h2>
