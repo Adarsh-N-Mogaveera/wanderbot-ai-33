@@ -7,7 +7,7 @@ import { MapPin, Clock, Star, Navigation, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
-import { formatMinutesToHoursAndMinutes } from "@/lib/timeUtils";
+import { Map, Marker, Source, Layer } from 'react-map-gl';
 
 interface Destination {
   name: string;
